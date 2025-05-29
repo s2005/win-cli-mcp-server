@@ -85,13 +85,6 @@ export function loadConfig(configPath?: string): ServerConfig {
     }
   }
 
-  // Validate WSL specific configuration
-  if (config.shells.wsl && config.shells.wsl.enabled) {
-    if (!config.shells.wsl.wslDistributionName || typeof config.shells.wsl.wslDistributionName !== 'string' || config.shells.wsl.wslDistributionName.trim() === '') {
-      throw new Error('Invalid configuration for wsl: wslDistributionName must be a non-empty string when wsl is enabled');
-    }
-  }
-
   // Use defaults only if no config was loaded
   const mergedConfig = Object.keys(loadedConfig).length > 0 
     ? mergeConfigs(DEFAULT_CONFIG, loadedConfig)

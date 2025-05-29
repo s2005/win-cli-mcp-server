@@ -16,7 +16,8 @@ import {
   extractCommandName,
   validateShellOperators,
   normalizeWindowsPath,
-  validateWorkingDirectory
+  validateWorkingDirectory,
+  isPathAllowed
 } from './utils/validation.js';
 import { validateDirectoriesAndThrow } from './utils/directoryValidator.js';
 import { spawn } from 'child_process';
@@ -59,7 +60,8 @@ const ValidateDirectoriesArgsSchema = z.object({
   directories: z.array(z.string()),
 });
 
-class CLIServer {
+export class CLIServer {
+  public callToolHandler_ForTestsOnly?: (request: any) => Promise<any>; // Added for testing
   private server: Server;
   private allowedPaths: Set<string>;
   private blockedCommands: Set<string>;
@@ -238,7 +240,7 @@ class CLIServer {
     });
 
     // Handle tool execution
-    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    this.callToolHandler_ForTestsOnly = async (request) => { // Assign to class member
       try {
         switch (request.params.name) {
           case "execute_command": {
@@ -366,6 +368,14 @@ class CLIServer {
 
           case "get_current_directory": {
             const currentDir = process.cwd();
+            if (this.config.security.restrictWorkingDirectory) {
+              if (!isPathAllowed(currentDir, Array.from(this.allowedPaths))) {
+                throw new McpError(
+                  ErrorCode.InvalidRequest, // Changed from PermissionDenied
+                  "Current directory is not in the list of allowed directories."
+                );
+              }
+            }
             return {
               content: [{
                 type: "text",
@@ -503,7 +513,8 @@ class CLIServer {
         }
         throw err;
       }
-    });
+    };
+    this.server.setRequestHandler(CallToolRequestSchema, this.callToolHandler_ForTestsOnly); // Register it
   }
 
   private async cleanup(): Promise<void> {
