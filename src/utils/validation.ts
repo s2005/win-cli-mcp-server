@@ -196,18 +196,18 @@ export function normalizeWindowsPath(inputPath: string): string {
     const gitbashMatch = currentPath.match(/^\\([a-zA-Z])(\\|$)(.*)/);
     if (gitbashMatch) {
         currentPath = `${gitbashMatch[1].toUpperCase()}:\\${gitbashMatch[3]}`;
-    } 
-    else if (currentPath.startsWith('\\\\')) {
-        // UNC path, already absolute
-    } 
+    }
     else if (currentPath.startsWith('\\')) {
+        // UNC path (e.g. "\\\\server\\share") should remain unchanged
+    }
+    else if (currentPath.startsWith('\\') && !currentPath.startsWith('\\\\')) {
         const hasDriveLetterAfterInitialSlash = /^[a-zA-Z]:/.test(currentPath.substring(1));
-        if (hasDriveLetterAfterInitialSlash) { 
-            currentPath = currentPath.substring(1); 
-        } else { 
-            currentPath = `C:\\${currentPath.substring(1)}`; 
+        if (hasDriveLetterAfterInitialSlash) {
+            currentPath = currentPath.substring(1);
+        } else {
+            currentPath = `C:\\${currentPath.substring(1)}`;
         }
-    } 
+    }
     else { 
         if (/^[a-zA-Z]:(?![\\/])/.test(currentPath)) { 
             currentPath = `${currentPath.substring(0, 2)}\\${currentPath.substring(2)}`;

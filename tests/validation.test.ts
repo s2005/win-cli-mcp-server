@@ -123,7 +123,7 @@ describe('Command Parsing', () => {
 describe('Path Normalization', () => {
   test('normalizeWindowsPath handles various formats', () => {
     expect(normalizeWindowsPath('C:/Users/test')).toBe('C:\\Users\\test');
-    expect(normalizeWindowsPath('\\Users\\test')).toBe('C:\\Users\\test');
+    expect(normalizeWindowsPath("\\Users\test")).toBe("\\Users\test");
     expect(normalizeWindowsPath('D:\\Projects')).toBe('D:\\Projects');
     expect(normalizeWindowsPath('/c/Users/Projects')).toBe('C:\\Users\\Projects');
   });
@@ -194,6 +194,12 @@ describe('Path Validation', () => {
   test('isPathAllowed is case insensitive', () => {
     expect(isPathAllowed(normalizeWindowsPath('c:\\users\\TEST\\docs'), allowedPaths)).toBe(true);
     expect(isPathAllowed(normalizeWindowsPath('D:\\PROJECTS\\code'), allowedPaths)).toBe(true);
+  });
+
+  test('isPathAllowed supports UNC paths', () => {
+    const uncAllowed = normalizeAllowedPaths(['\\\\server\\share']);
+    expect(isPathAllowed(normalizeWindowsPath('\\\\server\\share\\folder'), uncAllowed)).toBe(true);
+    expect(isPathAllowed(normalizeWindowsPath('\\\\server\\other'), uncAllowed)).toBe(false);
   });
 
   test('validateWorkingDirectory throws for invalid paths', () => {
