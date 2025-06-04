@@ -94,14 +94,24 @@ export function loadConfig(configPath?: string): ServerConfig {
 function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<ServerConfig>): ServerConfig {
   const merged: ServerConfig = {
     security: {
-      // If user provided security config, use it entirely, otherwise use default
-      ...(userConfig.security || defaultConfig.security)
+      // Start with defaults then override with any user supplied options
+      ...defaultConfig.security,
+      ...(userConfig.security || {})
     },
     shells: {
-      // Same for each shell - if user provided config, use it entirely
-      powershell: userConfig.shells?.powershell || defaultConfig.shells.powershell,
-      cmd: userConfig.shells?.cmd || defaultConfig.shells.cmd,
-      gitbash: userConfig.shells?.gitbash || defaultConfig.shells.gitbash
+      // Merge each shell config individually so unspecified options fall back to defaults
+      powershell: {
+        ...defaultConfig.shells.powershell,
+        ...(userConfig.shells?.powershell || {})
+      },
+      cmd: {
+        ...defaultConfig.shells.cmd,
+        ...(userConfig.shells?.cmd || {})
+      },
+      gitbash: {
+        ...defaultConfig.shells.gitbash,
+        ...(userConfig.shells?.gitbash || {})
+      }
     }
   };
 
