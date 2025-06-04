@@ -28,7 +28,7 @@ import { loadConfig, createDefaultConfig } from './utils/config.js';
 import { createSerializableConfig } from './utils/configUtils.js';
 import type { ServerConfig } from './types/config.js';
 import { createRequire } from 'module';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname } from 'path';
 
 const require = createRequire(import.meta.url);
@@ -570,4 +570,8 @@ const main = async () => {
   }
 };
 
-main();
+if (pathToFileURL(process.argv[1]).href === import.meta.url) {
+  main();
+}
+
+export { CLIServer, main };
