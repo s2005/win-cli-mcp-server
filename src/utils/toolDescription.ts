@@ -60,7 +60,8 @@ export function buildToolDescription(allowedShells: string[]): string[] {
       "  \"command\": \"ls -la\",",
       "  \"workingDir\": \"/c/Users/username\"",
       "}",
-      "```"
+      "```",
+      ""
     );
   }
 
