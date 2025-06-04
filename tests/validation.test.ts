@@ -132,6 +132,10 @@ describe('Path Normalization', () => {
     expect(normalizeWindowsPath('C:\\\\Users\\\\test')).toBe('C:\\Users\\test');
     expect(normalizeWindowsPath('C:/Users//test')).toBe('C:\\Users\\test');
   });
+  test('normalizeWindowsPath resolves relative segments', () => {
+    expect(normalizeWindowsPath('C:/folder/../other')).toBe('C:\\other');
+    expect(normalizeWindowsPath('C:/folder/../')).toBe('C:\\');
+  });
 });
 
 describe('Allowed Paths Normalization', () => {
