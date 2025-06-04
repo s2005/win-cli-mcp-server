@@ -59,6 +59,7 @@ const ValidateDirectoriesArgsSchema = z.object({
   directories: z.array(z.string()),
 });
 
+
 class CLIServer {
   private server: Server;
   private allowedPaths: Set<string>;
@@ -84,40 +85,57 @@ class CLIServer {
     this.setupHandlers();
   }
 
-  private validateCommand(shell: keyof ServerConfig['shells'], command: string): void {
-    // Check for command chaining/injection attempts if enabled
+  private validateSingleCommand(shell: keyof ServerConfig['shells'], command: string): void {
     if (this.config.security.enableInjectionProtection) {
-      // Get shell-specific config
       const shellConfig = this.config.shells[shell];
-      
-      // Use shell-specific operator validation
       validateShellOperators(command, shellConfig);
     }
-  
+
     const { command: executable, args } = parseCommand(command);
-  
-    // Check for blocked commands
+
     if (isCommandBlocked(executable, Array.from(this.blockedCommands))) {
       throw new McpError(
         ErrorCode.InvalidRequest,
         `Command is blocked: "${extractCommandName(executable)}"`
       );
     }
-  
-    // Check for blocked arguments
+
     if (isArgumentBlocked(args, this.config.security.blockedArguments)) {
       throw new McpError(
         ErrorCode.InvalidRequest,
         'One or more arguments are blocked. Check configuration for blocked patterns.'
       );
     }
-  
-    // Validate command length
+
     if (command.length > this.config.security.maxCommandLength) {
       throw new McpError(
         ErrorCode.InvalidRequest,
         `Command exceeds maximum length of ${this.config.security.maxCommandLength}`
       );
+    }
+  }
+
+  private validateCommand(shell: keyof ServerConfig['shells'], command: string, workingDir: string): void {
+    const steps = command.split(/\s*&&\s*/);
+    let currentDir = workingDir;
+
+    for (const step of steps) {
+      const trimmed = step.trim();
+      if (!trimmed) continue;
+
+      this.validateSingleCommand(shell, trimmed);
+
+      const { command: executable, args } = parseCommand(trimmed);
+      if ((executable.toLowerCase() === 'cd' || executable.toLowerCase() === 'chdir') && args.length) {
+        let target = normalizeWindowsPath(args[0]);
+        if (!path.isAbsolute(target)) {
+          target = normalizeWindowsPath(path.resolve(currentDir, target));
+        }
+        if (this.config.security.restrictWorkingDirectory) {
+          validateWorkingDirectory(target, Array.from(this.allowedPaths));
+        }
+        currentDir = target;
+      }
     }
   }
 
@@ -251,15 +269,12 @@ class CLIServer {
               workingDir: z.string().optional()
             }).parse(request.params.arguments);
 
-            // Validate command
-            this.validateCommand(args.shell as keyof ServerConfig['shells'], args.command);
-
-            // Validate working directory if provided
+            // Normalize and validate working directory if provided
             let workingDir = args.workingDir ? normalizeWindowsPath(args.workingDir) : process.cwd();
-
+            
             const shellKey = args.shell as keyof typeof this.config.shells;
             const shellConfig = this.config.shells[shellKey];
-            
+
             if (this.config.security.restrictWorkingDirectory) {
               try {
                 // Use the normalized path for validation
@@ -272,6 +287,9 @@ class CLIServer {
                 );
               }
             }
+
+            // Validate command (including chained operations)
+            this.validateCommand(args.shell as keyof ServerConfig['shells'], args.command, workingDir);
 
             // Execute command
             return new Promise((resolve, reject) => {
@@ -417,10 +435,10 @@ class CLIServer {
                   requestedDirectory: args.path
                 }
               };
-            }
           }
+        }
 
-          case "validate_directories": {
+        case "validate_directories": {
             if (!this.config.security.restrictWorkingDirectory) {
               return {
                 content: [{
@@ -472,12 +490,13 @@ class CLIServer {
                   metadata: {}
                 };
               }
-            }
           }
+        }
 
-          case "get_config": {
-            // Create a structured copy of config for external use
-            const safeConfig = this.getSafeConfig();
+
+        case "get_config": {
+          // Create a structured copy of config for external use
+          const safeConfig = this.getSafeConfig();
             return {
               content: [{
                 type: "text",

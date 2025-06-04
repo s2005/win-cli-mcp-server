@@ -50,7 +50,7 @@ export const DEFAULT_CONFIG: ServerConfig = {
       validatePath: (dir: string) => dir.match(defaultValidatePathRegex) !== null,
       blockedOperators: ['&', '|', ';', '`']
     }
-  }
+  },
 };
 
 export function loadConfig(configPath?: string): ServerConfig {
@@ -84,6 +84,7 @@ export function loadConfig(configPath?: string): ServerConfig {
 
   // Normalize and dedupe allowedPaths
   mergedConfig.security.allowedPaths = normalizeAllowedPaths(mergedConfig.security.allowedPaths);
+
 
   // Validate the merged config
   validateConfig(mergedConfig);

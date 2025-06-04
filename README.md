@@ -268,6 +268,21 @@ The configuration file is divided into two main sections: `security` and `shells
 }
 ```
 
+
+#### Chained Commands
+
+You can execute a series of commands in one request by joining them with `&&`. The server validates each step and checks any `cd` operations against the allowed directories.
+
+```json
+{
+  "name": "execute_command",
+  "arguments": {
+    "shell": "gitbash",
+    "command": "cd /c/my/project && source venv/bin/activate && npm test"
+  }
+}
+```
+
 ## API
 
 ### Tools
