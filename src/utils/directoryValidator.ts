@@ -53,7 +53,7 @@ export function validateDirectoriesAndThrow(directories: string[], allowedPaths:
     if (result.invalidDirectories.length === 1) {
       throw new McpError(
         ErrorCode.InvalidRequest,
-        `The following directory is outside allowed paths: ${invalidDirsStr}. Allowed paths are: ${allowedPathsStr}. Commands with restricted directory is not allowed to execute.`
+        `The following directory is outside allowed paths: ${invalidDirsStr}. Allowed paths are: ${allowedPathsStr}. Commands with restricted directory are not allowed to execute.`
       );
     } else {
       throw new McpError(
