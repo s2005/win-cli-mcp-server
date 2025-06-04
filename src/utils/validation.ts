@@ -217,7 +217,7 @@ export function normalizeWindowsPath(inputPath: string): string {
         }
     }
     
-    let finalPath = path.normalize(currentPath);
+    let finalPath = path.win32.normalize(currentPath);
 
     const driveLetterMatchCleanup = finalPath.match(/^([a-z]):(.*)/);
     if (driveLetterMatchCleanup) {
