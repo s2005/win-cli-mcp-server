@@ -119,6 +119,18 @@ describe('Directory Validator', () => {
       }
     });
 
+    test('should use singular wording for a single invalid directory', () => {
+      const invalidDir = 'C:\\Windows\\System32';
+
+      try {
+        validateDirectoriesAndThrow([invalidDir], allowedPaths);
+        fail('Expected an error to be thrown');
+      } catch (error: any) {
+        expect(error).toBeInstanceOf(McpError);
+        expect(error.message).toContain('directory is outside');
+      }
+    });
+
     test('should handle empty directories array', () => {
       expect(() => {
         validateDirectoriesAndThrow([], allowedPaths);
