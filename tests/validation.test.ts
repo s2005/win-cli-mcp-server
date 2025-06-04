@@ -136,6 +136,14 @@ describe('Path Normalization', () => {
     expect(normalizeWindowsPath('C:/folder/../other')).toBe('C:\\other');
     expect(normalizeWindowsPath('C:/folder/../')).toBe('C:\\');
   });
+  test('normalizeWindowsPath resolves git bash style relative segments', () => {
+    expect(normalizeWindowsPath('/c/folder/../other')).toBe('C:\\other');
+    expect(normalizeWindowsPath('/c/folder/../')).toBe('C:\\');
+  });
+  test('normalizeWindowsPath handles drive-relative paths', () => {
+    expect(normalizeWindowsPath('C:folder/sub')).toBe('C:\\folder\\sub');
+    expect(normalizeWindowsPath('C:folder/../')).toBe('C:\\');
+  });
 });
 
 describe('Allowed Paths Normalization', () => {
