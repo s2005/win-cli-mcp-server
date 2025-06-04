@@ -86,6 +86,7 @@ describe('get_config tool', () => {
     expect(safeConfig.shells.powershell.validatePath).toBeUndefined();
     expect(safeConfig.shells.cmd.validatePath).toBeUndefined();
     expect(safeConfig.shells.gitbash.validatePath).toBeUndefined();
+
   });
 
   test('createSerializableConfig returns consistent config structure', () => {
@@ -113,6 +114,7 @@ describe('get_config tool', () => {
       expect(safeConfig.shells[shellName]).toHaveProperty('args');
       expect(safeConfig.shells[shellName]).toHaveProperty('blockedOperators');
     });
+
   });
   
   test('get_config tool response format', () => {

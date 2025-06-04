@@ -45,4 +45,5 @@ describe('Validate allowedPaths normalization from config', () => {
     expect(cfg.security.commandTimeout).toBe(DEFAULT_CONFIG.security.commandTimeout);
     expect(cfg.security.enableInjectionProtection).toBe(DEFAULT_CONFIG.security.enableInjectionProtection);
   });
+
 });
