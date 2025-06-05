@@ -140,15 +140,6 @@ class CLIServer {
   }
 
   /**
-   * Escapes special characters in a string for use in a regular expression
-   * @param text The string to escape
-   * @returns The escaped string
-   */
-  private escapeRegex(text: string): string {
-    return text.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-  }
-  
-  /**
    * Creates a structured copy of the configuration for external use
    * @returns A serializable version of the configuration
    */
