@@ -30,6 +30,7 @@ It allows MCP clients (like [Claude Desktop](https://claude.ai/download)) to per
   - [Resources](#resources)
 - [Security Considerations](#security-considerations)
 - [Using the MCP Inspector for Testing](#using-the-mcp-inspector-for-testing)
+- [Development and Testing](#development-and-testing)
 - [License](#license)
 
 ## Features
@@ -354,6 +355,16 @@ Use the Inspector to interactively test this server with a custom config file. P
 ```bash
 # Inspect with built server and test config
 npx @modelcontextprotocol/inspector -- node dist/index.js --config tests/config.json
+```
+
+## Development and Testing
+
+This project requires **Node.js 18 or later**.
+Install the dependencies and run the test suite with:
+
+```bash
+npm install
+npm test
 ```
 
 ## License
