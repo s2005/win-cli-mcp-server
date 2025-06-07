@@ -95,3 +95,10 @@ The tests also cover the correct normalization and validation of WSL paths (e.g.
     - **`should execute command in valid WSL working directory when allowed` (Test 5.1)**: Verifies that a command can be executed when its `workingDir` is a valid WSL path (e.g., `/mnt/c/some_dir`) and this path is correctly normalized and listed in `allowedPaths`.
     - **`should reject command in invalid WSL working directory (different root)` (Test 5.2)**: Ensures commands are rejected if their `workingDir` is a WSL path on a different/disallowed root (e.g., `/mnt/d/...` when only `/mnt/c/...` is allowed).
     - **`should reject command in invalid WSL working directory (disallowed suffix)` (Test 5.3)**: Ensures commands are rejected if their `workingDir` is a WSL path that is not covered by any entry in `allowedPaths`.
+## tests/processManagement.test.ts
+
+- **should terminate process on timeout** – ensures that a long-running command is killed after exceeding the configured timeout.
+- **should handle process spawn errors gracefully** – verifies that spawn failures throw a descriptive `McpError`.
+- **should propagate shell process errors** – checks that errors emitted by the spawned process reject the command.
+- **should clear timeout when process exits normally** – confirms that the timeout is cleared and the process is not killed when it finishes before the limit.
+
