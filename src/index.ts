@@ -424,6 +424,7 @@ class CLIServer {
 
             // Handle process errors (e.g., shell crashes)
             shellProcess.on('error', (err) => {
+              clearTimeout(timeout); // Clear the timeout
               const errorMessage = `Shell process error: ${err.message}`;
               reject(new McpError(
                 ErrorCode.InternalError,

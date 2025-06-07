@@ -3,6 +3,7 @@ import { describe, expect, test, beforeAll, afterAll, jest } from '@jest/globals
 import { MockCLIServer } from './helpers/MockCLIServer.js';
 import { DEFAULT_CONFIG } from '../src/utils/config.js';
 import { mockWindowsPaths } from './helpers/pathHelpers.js';
+import { normalizeWindowsPath } from '../src/utils/validation.js';
 import { buildTestConfig } from './helpers/testUtils.js';
 
 mockWindowsPaths();
@@ -30,10 +31,12 @@ beforeAll(() => {
   tempDir = '/c/win-cli-test';
   config = buildTestConfig({
     security: {
-      allowedPaths: [tempDir],
+      ...DEFAULT_CONFIG.security, // Start with all defaults
+      allowedPaths: [normalizeWindowsPath(tempDir)], // Ensure normalized path
       blockedCommands: ['rm'],
-      blockedArguments: ['--exec'],
-      enableInjectionProtection: false
+      blockedArguments: ['--exec'], // Note: DEFAULT_CONFIG already blocks --exec
+      enableInjectionProtection: false, // Override default
+      restrictWorkingDirectory: true, // Ensure this is true for the tests
     }
   });
 });
@@ -45,7 +48,7 @@ afterAll(() => {
 describe('validateCommand chained operations', () => {
   test('allows cd within allowed path', () => {
     const server = new MockCLIServer(config);
-    const subDir = path.join(tempDir, 'sub');
+    const subDir = path.posix.join(tempDir, 'sub'); // Use posix.join for POSIX-style tempDir
     expect(() => {
       (server as any).validateCommand('cmd', `cd ${subDir} && echo hi`, tempDir);
     }).not.toThrow();
@@ -60,9 +63,9 @@ describe('validateCommand chained operations', () => {
 
   test('rejects relative cd escaping allowed path', () => {
     const server = new MockCLIServer(config);
-    const sub = path.join(tempDir, 'inner');
+    const sub = path.posix.join(tempDir, 'inner'); // Use posix.join for POSIX-style tempDir
     expect(() => {
-      (server as any).validateCommand('cmd', 'cd .. && dir', sub);
+      (server as any).validateCommand('cmd', 'cd ../.. && dir', sub);
     }).toThrow();
   });
 

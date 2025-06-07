@@ -38,7 +38,7 @@ const allowedPaths = ['C:\\Users\\test', 'D:\\Projects'];
       [['C:\\Windows\\System32', 'E:\\NotAllowed'], false, ['C:\\Windows\\System32', 'E:\\NotAllowed']],
       [['C:\\Users\\test\\documents', 'C:\\Program Files'], false, ['C:\\Program Files']],
       [['/c/Users/test/docs', '/d/Projects/web'], true, []],
-      [['C:\\Users\\test', 'D:\\Projects', 'E:\\Invalid'], false, ['E\\Invalid']],
+      [['C:\\Users\\test', 'D:\\Projects', 'E:\\Invalid'], false, ['E:\\Invalid']],
       [[], true, []],
     ])('validateDirectories(%j) should return isValid=%s, invalidDirectories=%j',
       (directories, expectedValid, expectedInvalid) => {
@@ -50,9 +50,39 @@ const allowedPaths = ['C:\\Users\\test', 'D:\\Projects'];
 
   describe('validateDirectoriesAndThrow error messages', () => {
     test.each([
-      [['C\\Windows\\System32'], ['directory is outside', 'C\\Windows\\System32']],
-      [['E\\Dir1', 'F\\Dir2'], ['directories are outside', 'E\\Dir1', 'F\\Dir2']],
-      [['C\\Program Files'], ['directory is outside', 'C\\Program Files', 'C\\Users\\test', 'D\\Projects']],
+      [
+        ['C:\\Windows\\System32'],
+        [
+          'MCP error -32600',
+          'The following directory is outside allowed paths:',
+          'C:\\\\Windows\\\\System32',
+          'Allowed paths are:',
+          'C:\\\\Users\\\\test, D:\\\\Projects',
+          'Commands with restricted directory are not allowed to execute'
+        ]
+      ],
+      [
+        ['E:\\Dir1', 'F:\\Dir2'],
+        [
+          'MCP error -32600',
+          'The following directories are outside allowed paths:',
+          'E:\\\\Dir1, F:\\\\Dir2',
+          'Allowed paths are:',
+          'C:\\\\Users\\\\test, D:\\\\Projects',
+          'Commands with restricted directories are not allowed to execute'
+        ]
+      ],
+      [
+        ['C:\\Program Files'],
+        [
+          'MCP error -32600',
+          'The following directory is outside allowed paths:',
+          'C:\\\\Program Files',
+          'Allowed paths are:',
+          'C:\\\\Users\\\\test, D:\\\\Projects',
+          'Commands with restricted directory are not allowed to execute'
+        ]
+      ]
     ])('should throw with correct message for %j', (invalidDirs, expectedParts) => {
       expect(() => validateDirectoriesAndThrow(invalidDirs, allowedPaths))
         .toThrow(expect.objectContaining({

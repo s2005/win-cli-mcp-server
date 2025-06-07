@@ -17,8 +17,8 @@ describe('Config Normalization', () => {
       ['c:\\somefolder\\test', 'c:\\other\\path', 'c:\\another\\folder', '/mnt/d/incorrect/path']
     ],
     [
-      ['D:\\Work\\Project', '\\server\\share', '/e/temp'],
-      ['d:\\work\\project', '\\server\\share', 'e:\\temp']
+      ['D:\\Work\\Project', '\\\\server\\share', '/e/temp'],
+      ['d:\\work\\project', '\\\\server\\share', 'e:\\temp']
     ],
     [
       ['/mnt/c/linux/style', '/home/user', 'C:\\Windows\\Path'],
@@ -36,7 +36,7 @@ describe('Config Normalization', () => {
       if (expectedPath.startsWith('/mnt/') || expectedPath.startsWith('/home/')) {
         expect(normalized[index]).toBe(expectedPath);
       } else {
-        expect(normalized[index]).toBe(path.normalize(expectedPath));
+        expect(normalized[index]).toBe(expectedPath); // Changed from path.normalize(expectedPath)
       }
     });
 

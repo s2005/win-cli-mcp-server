@@ -11,6 +11,10 @@ import {
 } from '../../src/utils/validation.js';
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 
+const validateCommandCallHistory: { command: string, workingDir: string }[] = [];
+const MAX_VALIDATE_CMD_HISTORY_SIZE = 5;
+const VALIDATE_CMD_RECURSION_THRESHOLD = 2;
+
 export class MockCLIServer {
   constructor(public config: ServerConfig) {}
 
@@ -44,14 +48,29 @@ export class MockCLIServer {
   }
 
   validateCommand(shellKey: string | ShellConfig, command: string, workingDir: string): void {
-    const shellConfig: ShellConfig =
+    const normalizePathCallStack: Set<string> = new Set(); // Call stack for normalizeWindowsPath calls within this validateCommand execution
+    // Debugging: Track call history for validateCommand
+    const currentCall = { command, workingDir };
+    validateCommandCallHistory.push(currentCall);
+    if (validateCommandCallHistory.length > MAX_VALIDATE_CMD_HISTORY_SIZE) {
+        validateCommandCallHistory.shift();
+    }
+    const occurrences = validateCommandCallHistory.filter(c => c.command === command && c.workingDir === workingDir).length;
+    if (occurrences >= VALIDATE_CMD_RECURSION_THRESHOLD && validateCommandCallHistory.length >= VALIDATE_CMD_RECURSION_THRESHOLD) {
+        const historyString = validateCommandCallHistory.map(c => `(cmd: '${c.command}', wd: '${c.workingDir}')`).join(" -> ");
+        const historyCopy = [...validateCommandCallHistory];
+        validateCommandCallHistory.length = 0; // Clear for next tests
+        throw new Error(`MockCLIServer.validateCommand: Potential recursion detected. Call with (cmd: '${command}', wd: '${workingDir}') appeared ${occurrences} times in the last ${historyCopy.length} calls. History: [${historyString}]`);
+    }
+
+    const shellConfig: ShellConfig | undefined =
       typeof shellKey === 'string' ? this.config.shells[shellKey as keyof typeof this.config.shells] : shellKey;
     if (!shellConfig) {
       throw new Error(`Unknown shell: ${shellKey}`);
     }
 
     const steps = command.split(/\s*&&\s*/);
-    let currentDir = workingDir;
+    let currentDir = normalizeWindowsPath(workingDir);
 
     for (const step of steps) {
       const trimmed = step.trim();
@@ -61,10 +80,56 @@ export class MockCLIServer {
 
       const { command: executable, args } = parseCommand(trimmed);
       if ((executable.toLowerCase() === 'cd' || executable.toLowerCase() === 'chdir') && args.length) {
-        let target = normalizeWindowsPath(args[0]);
-        if (!path.isAbsolute(target)) {
-          target = normalizeWindowsPath(path.resolve(currentDir, target));
+        const cdArg = args[0];
+           
+        let pathForNormalization: string;
+
+        // Check if cdArg is a Git Bash style absolute path (e.g., /c/foo)
+
+        const gitBashMatch = cdArg.match(/^\/([a-zA-Z])(\/.*)?$/);
+        const isWSLAbsolutePath = !gitBashMatch && cdArg.startsWith('/');
+        const isWin32Absolute = path.win32.isAbsolute(cdArg);
+
+
+        if (gitBashMatch) {
+          // It's a Git Bash path (e.g., /c/foo), normalizeWindowsPath will handle its conversion
+          pathForNormalization = cdArg; 
+
+        } else if (isWSLAbsolutePath) {
+          // It's a WSL absolute path (e.g., /mnt/c/foo or /home/user)
+          // normalizeWindowsPath will handle it (preserving forward slashes)
+          pathForNormalization = cdArg;
+
+        } else if (path.win32.isAbsolute(cdArg)) {
+          // It's a Windows absolute path (e.g., C:\foo)
+          pathForNormalization = cdArg;
+
+        } else {
+          // It's a relative path
+          if (cdArg === '..') {
+            const normalizedCurrentDir = normalizeWindowsPath(currentDir); // Ensure currentDir is in a consistent format for checks
+            const isWindowsRoot = /^[a-zA-Z]:\\$/.test(normalizedCurrentDir);
+            const isWslRoot = normalizedCurrentDir === '/';
+            const isUncRoot = /^\\\\[^\\\\]+\\[^\\\\]+$/.test(normalizedCurrentDir);
+
+            if (isWindowsRoot || isWslRoot || isUncRoot) {
+              pathForNormalization = normalizedCurrentDir; // Stay at root
+
+            } else {
+              // Not at a root, resolve '..' normally
+              pathForNormalization = path.resolve(currentDir, cdArg);
+
+            }
+          } else {
+            // Relative path, but not '..', resolve normally
+            pathForNormalization = path.resolve(currentDir, cdArg);
+
+          }
         }
+        
+        let target = normalizeWindowsPath(pathForNormalization);
+
+
         if (this.config.security.restrictWorkingDirectory) {
           validateWorkingDirectory(target, this.config.security.allowedPaths);
         }

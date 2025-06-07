@@ -2,6 +2,9 @@
 # Use an official Node.js runtime as a parent image
 FROM node:18-alpine AS build
 
+# Install git and other development tools for devcontainer compatibility
+RUN apk add --no-cache git bash
+
 # Set the working directory in the container
 WORKDIR /app
 
