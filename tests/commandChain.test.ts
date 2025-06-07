@@ -1,6 +1,6 @@
 import path from 'path';
 import { describe, expect, test, beforeAll, afterAll, jest } from '@jest/globals';
-import { CLIServer } from '../src/index.js';
+import { MockCLIServer } from './helpers/MockCLIServer.js';
 import { DEFAULT_CONFIG } from '../src/utils/config.js';
 
 jest.mock('@modelcontextprotocol/sdk/server/index.js', () => {
@@ -43,7 +43,7 @@ afterAll(() => {
 
 describe('validateCommand chained operations', () => {
   test('allows cd within allowed path', () => {
-    const server = new CLIServer(config);
+    const server = new MockCLIServer(config);
     const subDir = path.join(tempDir, 'sub');
     const origAbs = path.isAbsolute;
     const origRes = path.resolve;
@@ -57,7 +57,7 @@ describe('validateCommand chained operations', () => {
   });
 
   test('rejects cd to disallowed path', () => {
-    const server = new CLIServer(config);
+    const server = new MockCLIServer(config);
     const origAbs = path.isAbsolute;
     const origRes = path.resolve;
     (path as any).isAbsolute = (p: string) => /^([a-zA-Z]:\\|\\\\)/.test(p) || origAbs(p);
@@ -70,7 +70,7 @@ describe('validateCommand chained operations', () => {
   });
 
   test('rejects relative cd escaping allowed path', () => {
-    const server = new CLIServer(config);
+    const server = new MockCLIServer(config);
     const sub = path.join(tempDir, 'inner');
     const origAbs = path.isAbsolute;
     const origRes = path.resolve;
@@ -84,7 +84,7 @@ describe('validateCommand chained operations', () => {
   });
 
   test('rejects blocked commands and arguments in chain', () => {
-    const server = new CLIServer(config);
+    const server = new MockCLIServer(config);
     const origAbs = path.isAbsolute;
     const origRes = path.resolve;
     (path as any).isAbsolute = (p: string) => /^([a-zA-Z]:\\|\\\\)/.test(p) || origAbs(p);
