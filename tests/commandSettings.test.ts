@@ -49,7 +49,8 @@ describe('validateCommand with different settings', () => {
     (path as any).isAbsolute = (p: string) => /^([a-zA-Z]:\\|\\\\)/.test(p) || origAbs(p);
     (path as any).resolve = (...segments: string[]) => path.win32.resolve(...segments);
     expect(() => {
-      (server as any).validateCommand('cmd', `cd ${tempDir} && echo hi & echo there`, tempDir);
+      const cmdConfig = (server as any).config.shells.cmd;
+      (server as any).validateCommand(cmdConfig, `cd ${tempDir} && echo hi & echo there`, tempDir);
     }).toThrow(/blocked operators/i);
     (path as any).isAbsolute = origAbs;
     (path as any).resolve = origRes;

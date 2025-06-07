@@ -33,7 +33,7 @@ describe('Validate allowedPaths normalization from config', () => {
       path.normalize('c:\\somefolder\\test'),
       path.normalize('c:\\other\\path'),
       path.normalize('c:\\another\\folder'),
-      path.normalize('\\mnt\\d\\incorrect\\path')
+      path.normalize('d:\\incorrect\\path')
     ]);
   });
   
