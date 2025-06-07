@@ -1,5 +1,6 @@
 import path from 'path';
 import type { ShellConfig } from '../types/config.js';
+import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js"; // Import McpError and ErrorCode
 
 export function extractCommandName(command: string): string {
     // Replace backslashes with forward slashes
@@ -38,13 +39,13 @@ export function validateShellOperators(command: string, shellConfig: ShellConfig
     }
 
     // Create regex pattern from blocked operators
-    const operatorPattern = shellConfig.blockedOperators
-        .map(op => op.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))  // Escape regex special chars
-        .join('|');
-    
-    const regex = new RegExp(operatorPattern);
-    if (regex.test(command)) {
-        throw new Error(`Command contains blocked operators for this shell: ${shellConfig.blockedOperators.join(', ')}`);
+    // Iterate and test each operator to identify the specific one found.
+    for (const op of shellConfig.blockedOperators) {
+        const escapedOp = op.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // Escape for regex
+        const regex = new RegExp(escapedOp);
+        if (regex.test(command)) {
+            throw new McpError(ErrorCode.InvalidRequest, `Command contains blocked operator: ${op}`);
+        }
     }
 }
 
@@ -147,27 +148,28 @@ export function parseCommand(fullCommand: string): { command: string; args: stri
 
 export function isPathAllowed(testPath: string, allowedPaths: string[]): boolean {
     // Step 1: Normalize testPath
-    const normalizedTestPath = normalizeWindowsPath(testPath)
-        .toLowerCase()
-        .replace(/\\$/, ''); // Remove trailing backslash
+    let normalizedTestPath = normalizeWindowsPath(testPath).toLowerCase();
+    normalizedTestPath = normalizedTestPath.replace(/[/\\]+$/, ''); // Remove ALL trailing slashes
 
     // Step 2: Iterate through allowedPaths
     return allowedPaths.some(allowedPath => {
         // Step 2a: Normalize current allowedPath
-        const normalizedAllowedPath = normalizeWindowsPath(allowedPath)
-            .toLowerCase()
-            .replace(/\\$/, ''); // Remove trailing backslash
+        let normalizedAllowedPath = normalizeWindowsPath(allowedPath).toLowerCase();
+        normalizedAllowedPath = normalizedAllowedPath.replace(/[/\\]+$/, ''); // Remove ALL trailing slashes
 
-        // Step 3: Comparison Logic
-        // a. Exact match
+        let comparisonResult = false;
         if (normalizedTestPath === normalizedAllowedPath) {
-            return true;
+            comparisonResult = true;
+        } else if (normalizedTestPath.startsWith(normalizedAllowedPath)) {
+            const charAfterAllowedPath = normalizedTestPath[normalizedAllowedPath.length];
+            if (charAfterAllowedPath === '/' || charAfterAllowedPath === '\\') {
+                comparisonResult = true;
+            }
         }
-        // b. Starts with allowedPath + path separator
-        // path.sep should be '\\' after normalizeWindowsPath
-        if (normalizedTestPath.startsWith(normalizedAllowedPath + '\\')) {
-            return true;
-        }
+
+        if (comparisonResult) return true;
+
+        // Fallback for other paths
         return false;
     });
 }
@@ -187,20 +189,61 @@ export function validateWorkingDirectory(dir: string, allowedPaths: string[]): v
 }
 
 export function normalizeWindowsPath(inputPath: string): string {
-    let currentPath = inputPath; 
+    // Handle UNC paths first: \\server\share
+    if (inputPath.startsWith('\\\\')) {
+        // Normalize, but prevent converting forward slashes if any were used by mistake in a UNC path
+        let normalizedUnc = inputPath.replace(/\//g, '\\');
+        normalizedUnc = path.win32.normalize(normalizedUnc);
+        // path.win32.normalize might convert \\\\ to \\ if not careful, ensure it stays \\\\server
+        if (normalizedUnc.startsWith('\\') && !normalizedUnc.startsWith('\\\\')) {
+          // This can happen if path.win32.normalize "fixes" \\\\server to \server
+          // It's a bit of a dance, ensure it's a valid UNC start.
+          // A more robust UNC check might be needed if this isn't sufficient.
+           return '\\' + normalizedUnc; // Prepend backslash to make it \\server again
+        }
+        return normalizedUnc;
+    }
+
+    // Check for WSL paths and other POSIX-like absolute paths
+    if (inputPath.startsWith('/')) {
+        let normalizedPosixPath = path.posix.normalize(inputPath);
+        // Check for Git Bash style /c/foo paths specifically
+        const gitBashDriveMatch = normalizedPosixPath.match(/^\/([a-zA-Z])($|\/.*)/);
+        if (gitBashDriveMatch) {
+            const driveLetter = gitBashDriveMatch[1].toUpperCase();
+            const restOfPath = gitBashDriveMatch[2] || ''; // Ensure restOfPath is empty string if undefined
+            // Convert to Windows style: C:\rest\of\path
+            // Need to remove leading slash from restOfPath if it exists, as it's part of the Windows path
+            return `${driveLetter}:${restOfPath.startsWith('/') ? restOfPath : '\\' + restOfPath}`.replace(/\//g, '\\');
+        }
+        // For other POSIX paths like /home/user, /mnt/c/foo, /usr/bin, return as is (normalized)
+        return normalizedPosixPath;
+    }
+
+    let currentPath = inputPath;
+
+    // The OLD WSL /mnt/x/foo to X:\foo handling block has been removed.
 
     const hadTrailingSlash = /[/\\]$/.test(currentPath) && currentPath.length > 1;
 
-    currentPath = currentPath.replace(/\//g, '\\');
+    currentPath = currentPath.replace(/\//g, '\\'); // Convert all / to \ for Windows processing
 
-    const gitbashMatch = currentPath.match(/^\\([a-zA-Z])(\\|$)(.*)/);
-    if (gitbashMatch) {
-        currentPath = `${gitbashMatch[1].toUpperCase()}:\\${gitbashMatch[3]}`;
+    // The Git Bash style /c/foo conversion is now handled by the block: if (inputPath.startsWith('/'))
+    // No need for the old `gitbashMatch` here for that specific case.
+    // However, if a path like `\c\foo` (starting with backslash) was intended to be caught,
+    // that is a different scenario. The `gitbashMatch` below implies it was for paths already processed to use `\`.
+    // Given the new upfront handling of `/` prefixed paths, this specific regex might be redundant or for edge cases.
+
+    // This regex was for paths like `\c\foo` that might have resulted after initial conversion of `/` to `\`
+    // It's less likely to be hit for `/c/foo` style inputs now.
+    const gitbashDriveMatchAfterSlashConversion = currentPath.match(/^\\([a-zA-Z])($|\\.*)/);
+    if (gitbashDriveMatchAfterSlashConversion) {
+        currentPath = `${gitbashDriveMatchAfterSlashConversion[1].toUpperCase()}:${gitbashDriveMatchAfterSlashConversion[2] || ''}`;
     }
-    else if (currentPath.startsWith('\\')) {
-        // UNC path (e.g. "\\\\server\\share") should remain unchanged
-    }
+    // Removed `else if (currentPath.startsWith('\\'))` for UNC as it's handled upfront.
+    // This handles paths like `\Users\test` (not `\\server\share` or `\c\foo`)
     else if (currentPath.startsWith('\\') && !currentPath.startsWith('\\\\')) {
+        // This case was for paths like \Users\test (interpreted as C:\Users\test)
         const hasDriveLetterAfterInitialSlash = /^[a-zA-Z]:/.test(currentPath.substring(1));
         if (hasDriveLetterAfterInitialSlash) {
             currentPath = currentPath.substring(1);
@@ -212,8 +255,13 @@ export function normalizeWindowsPath(inputPath: string): string {
         if (/^[a-zA-Z]:(?![\\/])/.test(currentPath)) { 
             currentPath = `${currentPath.substring(0, 2)}\\${currentPath.substring(2)}`;
         } 
-        else if (!/^[a-zA-Z]:/.test(currentPath)) { 
-            currentPath = `C:\\${currentPath}`;
+        // This was the old logic that might have prepended C:\ to already drive-lettered paths if not careful.
+        // If currentPath is already "C:\foo" or "C:", this should not apply.
+        // If currentPath is "foo\bar" (relative), it should become "C:\foo\bar".
+        else if (!/^[a-zA-Z]:\\/.test(currentPath) && !currentPath.startsWith('\\')) { // if not X:\path and not \path
+             if (!/^[a-zA-Z]:/.test(currentPath)) { // And also not X:relative
+                 currentPath = `C:\\${currentPath}`;
+             }
         }
     }
     

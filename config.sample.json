@@ -39,6 +39,12 @@
       "command": "C:\\Program Files\\Git\\bin\\bash.exe",
       "args": ["-c"],
       "blockedOperators": ["&", "|", ";", "`"]
+    },
+    "wsl": {
+      "enabled": true,
+      "command": "wsl.exe",
+      "args": ["-e"],
+      "blockedOperators": ["&", "|", ";", "`"]
     }
   }
 }

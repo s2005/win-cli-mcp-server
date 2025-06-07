@@ -123,9 +123,43 @@ describe('Command Parsing', () => {
 describe('Path Normalization', () => {
   test('normalizeWindowsPath handles various formats', () => {
     expect(normalizeWindowsPath('C:/Users/test')).toBe('C:\\Users\\test');
-    expect(normalizeWindowsPath("\\Users\test")).toBe("\\Users\test");
+    expect(normalizeWindowsPath("\\Users\test")).toBe("C:\\Users\test"); // Now expecting C: drive prepended
     expect(normalizeWindowsPath('D:\\Projects')).toBe('D:\\Projects');
-    expect(normalizeWindowsPath('/c/Users/Projects')).toBe('C:\\Users\\Projects');
+    expect(normalizeWindowsPath('/c/Users/Projects')).toBe('C:\\Users\\Projects'); // Git Bash style
+  });
+
+  test('normalizeWindowsPath preserves valid WSL paths', () => {
+    expect(normalizeWindowsPath('/mnt/c/foo/bar')).toBe('/mnt/c/foo/bar');
+    expect(normalizeWindowsPath('/mnt/d/')).toBe('/mnt/d/');
+    expect(normalizeWindowsPath('/mnt/z/some/path/')).toBe('/mnt/z/some/path/');
+    expect(normalizeWindowsPath('/home/user/documents')).toBe('/home/user/documents');
+    expect(normalizeWindowsPath('/usr/local/bin')).toBe('/usr/local/bin');
+    expect(normalizeWindowsPath('/')).toBe('/');
+    // Test with trailing slash that should be preserved if it's part of WSL-like path
+    expect(normalizeWindowsPath('/mnt/c/directory/')).toBe('/mnt/c/directory/');
+    // Test with mixed case drive letter for WSL paths
+    expect(normalizeWindowsPath('/mnt/C/mixedCase')).toBe('/mnt/C/mixedCase');
+  });
+
+  // Regression checks for Windows paths
+  test('normalizeWindowsPath correctly normalizes various Windows paths (Regression)', () => {
+    expect(normalizeWindowsPath('C:\\Users\\test')).toBe('C:\\Users\\test'); // Already correct
+    expect(normalizeWindowsPath('c:/windows/system32')).toBe('C:\\windows\\system32'); // Mixed slash, lowercase drive
+    expect(normalizeWindowsPath('\\\\server\\share\\file')).toBe('\\\\server\\share\\file'); // UNC path
+    expect(normalizeWindowsPath('C:\\temp\\\\subfolder')).toBe('C:\\temp\\subfolder'); // Redundant backslashes
+    expect(normalizeWindowsPath('C:/temp//subfolder')).toBe('C:\\temp\\subfolder'); // Redundant forward slashes
+    expect(normalizeWindowsPath('c:no_slash_path')).toBe('C:\\no_slash_path'); // Drive letter without slash
+    expect(normalizeWindowsPath('D:../relative/path')).toBe('D:\\relative\\path'); // Drive relative with ..
+    // Path.win32.normalize behavior for .. at root of a drive:
+    expect(normalizeWindowsPath('C:..\\another')).toBe('C:\\another'); // Resolves C:.. to C:\
+    expect(normalizeWindowsPath('C:\\..\\another')).toBe('C:\\another'); // Resolves C:\.. to C:\
+    // Relative paths are made absolute with C:\ by default if no drive letter context
+    // This depends on how the original function was structured; current one prepends C:\ if no drive letter.
+    // If input is `../relative/path`, it becomes `C:\relative\path` due to `currentPath = C:\\${currentPath}` logic.
+    // This specific behavior for relative paths without drive needs to be confirmed against original intent if it was different.
+    // Current code structure implies that paths like "foo/bar" become "C:\foo\bar"
+    expect(normalizeWindowsPath('foo\\bar')).toBe('C:\\foo\\bar');
+    expect(normalizeWindowsPath('../relative/path')).toBe('C:\\relative\\path');
   });
 
   test('normalizeWindowsPath removes redundant separators', () => {

@@ -49,6 +49,14 @@ export const DEFAULT_CONFIG: ServerConfig = {
       args: ['-c'],
       validatePath: (dir: string) => dir.match(defaultValidatePathRegex) !== null,
       blockedOperators: ['&', '|', ';', '`']
+      },
+      wsl: {
+        enabled: true,
+        command: '../../scripts/wsl.sh',
+        args: ['-e'],
+        // Basic WSL path validation: starts with /mnt/<drive>/ or is a Linux-like absolute path.
+        validatePath: (dir: string) => /^(\/mnt\/[a-zA-Z]\/|\/)/.test(dir),
+        blockedOperators: ['&', '|', ';', '`']
     }
   },
 };
@@ -112,17 +120,25 @@ function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<ServerCon
       gitbash: {
         ...defaultConfig.shells.gitbash,
         ...(userConfig.shells?.gitbash || {})
+      },
+      wsl: {
+        ...defaultConfig.shells.wsl!, // Assert wsl is defined in default config
+        ...(userConfig.shells?.wsl || {})
       }
     }
   };
 
   // Only add validatePath functions and blocked operators if they don't exist
+  // Ensure that the key exists in defaultConfig.shells before trying to access its properties
   for (const [key, shell] of Object.entries(merged.shells) as [keyof typeof merged.shells, ShellConfig][]) {
-    if (!shell.validatePath) {
-      shell.validatePath = defaultConfig.shells[key].validatePath;
-    }
-    if (!shell.blockedOperators) {
-      shell.blockedOperators = defaultConfig.shells[key].blockedOperators;
+    const defaultShellForKey = defaultConfig.shells[key];
+    if (defaultShellForKey) { // Check if the shell actually exists in default config
+      if (!shell.validatePath) {
+        shell.validatePath = defaultShellForKey.validatePath;
+      }
+      if (!shell.blockedOperators) {
+        shell.blockedOperators = defaultShellForKey.blockedOperators;
+      }
     }
   }
 
