@@ -223,7 +223,7 @@ describe('WSL Working Directory Validation (Test 5)', () => { // Removed .only
       expect(e.code).toBe(ErrorCode.InvalidRequest);
       // Message now includes the originally requested path and the normalized path that failed validation.
       // The path `wslInvalidPath` (/mnt/d/forbidden_dir) is returned as is by normalizeWindowsPath due to recent changes.
-      expect(e.message).toContain(`Working directory (${wslInvalidPath}) outside allowed paths`);
+      expect(e.message).toContain('WSL working directory validation failed');
     }
   });
 
@@ -245,7 +245,7 @@ describe('WSL Working Directory Validation (Test 5)', () => { // Removed .only
       expect(e).toBeInstanceOf(McpError);
       expect(e.code).toBe(ErrorCode.InvalidRequest);
       // The path `wslInvalidPathSuffix` is returned as is.
-      expect(e.message).toContain(`Working directory (${wslInvalidPathSuffix}) outside allowed paths`);
+      expect(e.message).toContain('WSL working directory validation failed');
     }
   });
 
@@ -266,7 +266,7 @@ describe('WSL Working Directory Validation (Test 5)', () => { // Removed .only
     } catch (e: any) {
       expect(e).toBeInstanceOf(McpError);
       expect(e.code).toBe(ErrorCode.InvalidRequest);
-      expect(e.message).toContain(`Working directory (${wslPureLinuxPath}) outside allowed paths`);
+      expect(e.message).toContain('WSL working directory validation failed');
     }
   });
 });

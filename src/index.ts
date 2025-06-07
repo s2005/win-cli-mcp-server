@@ -17,7 +17,8 @@ import {
   extractCommandName,
   validateShellOperators,
   normalizeWindowsPath,
-  validateWorkingDirectory
+  validateWorkingDirectory,
+  validateWslWorkingDirectory
 } from './utils/validation.js';
 import { validateDirectoriesAndThrow } from './utils/directoryValidator.js';
 import { spawn } from 'child_process';
@@ -271,23 +272,24 @@ class CLIServer {
             workingDir: z.string().optional()
           }).parse(toolParams.arguments);
 
-          // Normalize and validate working directory if provided
-          let workingDir = args.workingDir ? normalizeWindowsPath(args.workingDir) : process.cwd();
-
           const shellKey = args.shell as keyof typeof this.config.shells;
+        // Normalize and validate working directory if provided
+        let workingDir = args.workingDir ? (shellKey === 'wsl' ? args.workingDir : normalizeWindowsPath(args.workingDir)) : process.cwd();
           const shellConfig = this.config.shells[shellKey]!; // Assert non-null: shellKey from enum of enabled shells
 
           if (this.config.security.restrictWorkingDirectory) {
             try {
-              // Use the normalized path for validation
-              validateWorkingDirectory(workingDir, Array.from(this.allowedPaths));
-              } catch (error: any) { // Make error 'any' to access error.message
-              let originalWorkingDir = args.workingDir ? args.workingDir : process.cwd();
-                // Include the caught error's message for diagnostics
-                const detailMessage = error && typeof error.message === 'string' ? error.message : String(error);
+              if (shellKey === 'wsl') {
+                validateWslWorkingDirectory(workingDir, shellConfig, Array.from(this.allowedPaths));
+              } else {
+                validateWorkingDirectory(workingDir, Array.from(this.allowedPaths));
+              }
+            } catch (error: any) {
+              const originalWorkingDir = args.workingDir ? args.workingDir : process.cwd();
+              const detailMessage = error && typeof error.message === 'string' ? error.message : String(error);
               throw new McpError(
                 ErrorCode.InvalidRequest,
-                  `Working directory (${originalWorkingDir}) outside allowed paths. Original error: ${detailMessage}. Use validate_directories tool to validate directories before execution.`
+                `${shellKey === 'wsl' ? 'WSL working directory validation failed' : 'Working directory (' + originalWorkingDir + ') outside allowed paths'}. Original error: ${detailMessage}. Use validate_directories tool to validate directories before execution.`
               );
             }
           }

@@ -324,5 +324,81 @@ export function normalizeAllowedPaths(paths: string[]): string[] {
     }
 
     // Step 3: Return
-    return processedPaths;
+  return processedPaths;
+}
+
+/**
+ * Converts Windows path to WSL format using the specified mount point
+ */
+export function convertWindowsToWslPath(windowsPath: string, mountPoint: string = '/mnt/'): string {
+  const driveMatch = windowsPath.match(/^([a-zA-Z]):(.*)/);
+  if (driveMatch) {
+    const driveLetter = driveMatch[1].toLowerCase();
+    const restPath = driveMatch[2].replace(/\\/g, '/').replace(/^\/+/, '');
+    const converted = `${mountPoint}${driveLetter}/${restPath}`.replace(/\/+$/, '');
+    return converted || `${mountPoint}${driveLetter}`;
+  }
+
+  if (windowsPath.startsWith('\\\\')) {
+    throw new Error(`UNC paths cannot be converted to WSL format: ${windowsPath}`);
+  }
+
+  return windowsPath;
+}
+
+/**
+ * Resolve allowed paths for WSL shell
+ */
+export function resolveWslAllowedPaths(globalAllowedPaths: string[], wslConfig: ShellConfig): string[] {
+  const wslPaths: string[] = [];
+  const mountPoint = wslConfig.wslMountPoint || '/mnt/';
+
+  if (wslConfig.allowedPaths && wslConfig.allowedPaths.length > 0) {
+    wslPaths.push(...wslConfig.allowedPaths);
+  }
+
+  if (wslConfig.inheritGlobalPaths !== false) {
+    for (const globalPath of globalAllowedPaths) {
+      try {
+        const wslPath = convertWindowsToWslPath(globalPath, mountPoint);
+        if (!wslPaths.includes(wslPath)) {
+          wslPaths.push(wslPath);
+        }
+      } catch (err: any) {
+        console.warn(`Cannot convert global path to WSL format: ${globalPath} - ${err.message}`);
+      }
+    }
+  }
+
+  return wslPaths;
+}
+
+/**
+ * Check if WSL path is allowed
+ */
+export function isWslPathAllowed(testPath: string, allowedPaths: string[]): boolean {
+  const normalizedTest = path.posix.normalize(testPath).replace(/\/+$/, '');
+  return allowedPaths.some(allowed => {
+    const normalizedAllowed = path.posix.normalize(allowed).replace(/\/+$/, '');
+    if (normalizedTest === normalizedAllowed) return true;
+    if (normalizedTest.startsWith(normalizedAllowed)) {
+      const charAfter = normalizedTest[normalizedAllowed.length];
+      return charAfter === '/';
+    }
+    return false;
+  });
+}
+
+/**
+ * Validate WSL working directory using shell configuration
+ */
+export function validateWslWorkingDirectory(dir: string, wslConfig: ShellConfig, globalAllowedPaths: string[]): void {
+  const allowed = resolveWslAllowedPaths(globalAllowedPaths, wslConfig);
+  if (allowed.length === 0) {
+    throw new Error('No allowed paths configured for WSL shell');
+  }
+  if (!isWslPathAllowed(dir, allowed)) {
+    const allowedStr = allowed.join(', ');
+    throw new Error(`WSL working directory must be within allowed paths: ${allowedStr}`);
+  }
 }
