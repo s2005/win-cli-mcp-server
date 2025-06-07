@@ -312,7 +312,7 @@ export function validateWorkingDirectory(dir: string, allowedPaths: string[]): v
 
 export function normalizeWindowsPath(inputPath: string): string {
     // Handle UNC paths first: \\server\share
-    if (inputPath.startsWith('\\\\')) {
+    if (inputPath.startsWith('\\')) {
         // Normalize, but prevent converting forward slashes if any were used by mistake in a UNC path
         let normalizedUnc = inputPath.replace(/\//g, '\\');
         normalizedUnc = path.win32.normalize(normalizedUnc);
