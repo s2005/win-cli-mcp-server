@@ -79,6 +79,44 @@ describe('WSL Shell Execution via Emulator (Tests 1-4)', () => {
       expect(e.message).toContain('Command contains blocked operator: ;');
     }
   });
+
+  test('Test 4.1: uname -a execution', async () => {
+    const result = await serverInstance._executeTool({
+      name: 'execute_command',
+      arguments: { shell: 'wsl', command: 'uname -a' }
+    }) as CallToolResult;
+    expect(result.isError).toBe(false);
+    expect((result.metadata as any)?.exitCode).toBe(0);
+    expect(result.content[0].text).not.toBe('');
+    // Emulator specific output is the raw output of `uname -a`
+    expect(result.content[0].text).toMatch(/linux/i);
+  });
+
+  test('Test 4.2: Command with multiple arguments (ls -la /tmp)', async () => {
+    // /tmp should generally exist in a Linux-like environment provided by wsl.sh
+    const result = await serverInstance._executeTool({
+      name: 'execute_command',
+      arguments: { shell: 'wsl', command: 'ls -la /tmp' }
+    }) as CallToolResult;
+    expect(result.isError).toBe(false);
+    expect((result.metadata as any)?.exitCode).toBe(0);
+    // Check for actual ls output patterns
+    expect(result.content[0].text).toMatch(/total\s\d+/);
+    expect(result.content[0].text).toContain('.'); // current directory
+    expect(result.content[0].text).toContain('..'); // parent directory
+  });
+
+  test('Test 4.3: Command with non-existent path argument (ls /mnt/c)', async () => {
+    // The wsl.sh emulator runs in `/app` and does not have `/mnt/c`. This command should fail.
+    const result = await serverInstance._executeTool({
+      name: 'execute_command',
+      arguments: { shell: 'wsl', command: 'ls /mnt/c' }
+    }) as CallToolResult;
+    expect(result.isError).toBe(true); // Expect an error
+    expect((result.metadata as any)?.exitCode).not.toBe(0); // Expect non-zero exit code
+    // The error message from `ls` itself might be "No such file or directory"
+    expect(result.content[0].text).toMatch(/No such file or directory|cannot access/i);
+  });
 });
 
 describe('WSL Working Directory Validation (Test 5)', () => { // Removed .only
@@ -102,16 +140,16 @@ describe('WSL Working Directory Validation (Test 5)', () => { // Removed .only
     cwdTestConfig.security.enableInjectionProtection = false; // Not the focus of these tests
 
     // Using simplified "tad" for "test_allowed_dir"
-    // NEW: If /mnt/c/tad becomes C:\tad after normalization:
-    cwdTestConfig.security.allowedPaths = ['C:\\tad'];
+    // For WSL CWD tests, allowedPaths should also be in WSL format for consistent comparison
+    // as normalizeWindowsPath now preserves /mnt/* paths.
+    cwdTestConfig.security.allowedPaths = ['/mnt/c/tad']; // Changed from C:\\tad
 
     serverInstanceForCwdTest = new CLIServer(cwdTestConfig);
   });
 
-  test('Test 5.1: Valid WSL working directory', async () => { // Removed .only
-    const wslOriginalPath = '/mnt/c/tad/sub'; // Simplified path
-    // Expected path after normalization by normalizeWindowsPath, if /mnt/c/foo -> C:\foo
-    const wslNormalizedPathForPwd = 'C:\\tad\\sub';
+  test('Test 5.1: Valid WSL working directory (/mnt/c/tad/sub)', async () => {
+    const wslOriginalPath = '/mnt/c/tad/sub';
+    // This path should be allowed by the config ['/mnt/c/tad']
 
     const result = await serverInstanceForCwdTest._executeTool({
       name: 'execute_command',
@@ -124,20 +162,52 @@ describe('WSL Working Directory Validation (Test 5)', () => { // Removed .only
 
     expect(result.isError).toBe(false);
     expect((result.metadata as any)?.exitCode).toBe(0);
-
+    // `pwd` in the emulator (wsl.sh) will output the CWD of the node process (e.g. /app)
+    // not the conceptual wslOriginalPath.
     const firstContent = result.content[0];
     if (firstContent && firstContent.type === 'text') {
-      // Since wsl.sh (emulator) runs in process.cwd() (e.g. /app) for WSL tests
-      // to avoid ENOENT from invalid CWD for spawn on Linux,
-      // pwd will output that CWD, not the conceptual WSL path.
       expect(firstContent.text.trim()).toBe(process.cwd());
     } else {
-      throw new Error('Expected first content part to be text for valid CWD test.');
+      throw new Error('Expected first content part to be text for pwd test.');
     }
+    // Check that the metadata reflects the intended WSL working directory
+    expect((result.metadata as any)?.workingDirectory).toBe(wslOriginalPath);
   });
 
-  test('Test 5.2: Invalid WSL working directory (not in allowedPaths)', async () => {
-    const wslInvalidPath = '/mnt/d/forbidden_dir'; // d: drive, not in allowed c:\tad
+  test('Test 5.1.1: Valid WSL working directory (/tmp)', async () => {
+    // Reconfigure allowedPaths for this test to include a typical Linux path
+    // that does not undergo mnt/c style normalization.
+    serverInstanceForCwdTest = new CLIServer({
+      ...cwdTestConfig,
+      security: {
+        ...cwdTestConfig.security,
+        allowedPaths: ['/tmp'] // Allow /tmp directly
+      }
+    });
+
+    const wslTmpPath = '/tmp';
+    const result = await serverInstanceForCwdTest._executeTool({
+      name: 'execute_command',
+      arguments: {
+        shell: 'wsl',
+        command: 'ls', // Simple command
+        workingDir: wslTmpPath
+      }
+    }) as CallToolResult;
+
+    expect(result.isError).toBe(false);
+    expect((result.metadata as any)?.exitCode).toBe(0);
+    // `ls` in the emulator will output files in `process.cwd()`
+    expect(result.content[0].text).toContain('src'); // Assuming 'src' is a directory in project root
+    expect(result.content[0].text).not.toContain('Executed successfully'); // No longer part of eval output
+    expect((result.metadata as any)?.workingDirectory).toBe(wslTmpPath);
+  });
+
+
+  test('Test 5.2: Invalid WSL working directory (not in allowedPaths - /mnt/d/forbidden)', async () => {
+    // serverInstanceForCwdTest is configured with allowedPaths = ['C:\\tad']
+    // /mnt/d/forbidden_dir normalizes to D:\forbidden_dir which is not in C:\tad
+    const wslInvalidPath = '/mnt/d/forbidden_dir';
     try {
       await serverInstanceForCwdTest._executeTool({
         name: 'execute_command',
@@ -151,12 +221,16 @@ describe('WSL Working Directory Validation (Test 5)', () => { // Removed .only
     } catch (e: any) {
       expect(e).toBeInstanceOf(McpError);
       expect(e.code).toBe(ErrorCode.InvalidRequest);
+      // Message now includes the originally requested path and the normalized path that failed validation.
+      // The path `wslInvalidPath` (/mnt/d/forbidden_dir) is returned as is by normalizeWindowsPath due to recent changes.
       expect(e.message).toContain(`Working directory (${wslInvalidPath}) outside allowed paths`);
     }
   });
 
-  test('Test 5.3: Invalid WSL working directory (valid prefix, not directory containment)', async () => { // Removed .skip
-    const wslInvalidPathSuffix = '/mnt/c/tad_plus_suffix'; // c:\tad_plus_suffix, not a subdir of c:\tad
+  test('Test 5.3: Invalid WSL working directory (valid prefix, not directory containment - /mnt/c/tad_plus_suffix)', async () => {
+    // serverInstanceForCwdTest is configured with allowedPaths = ['C:\\tad']
+    // /mnt/c/tad_plus_suffix normalizes to C:\tad_plus_suffix, which is not a subdirectory of C:\tad
+    const wslInvalidPathSuffix = '/mnt/c/tad_plus_suffix';
      try {
       await serverInstanceForCwdTest._executeTool({
         name: 'execute_command',
@@ -170,7 +244,29 @@ describe('WSL Working Directory Validation (Test 5)', () => { // Removed .only
     } catch (e: any) {
       expect(e).toBeInstanceOf(McpError);
       expect(e.code).toBe(ErrorCode.InvalidRequest);
+      // The path `wslInvalidPathSuffix` is returned as is.
       expect(e.message).toContain(`Working directory (${wslInvalidPathSuffix}) outside allowed paths`);
+    }
+  });
+
+  test('Test 5.4: Invalid WSL working directory (pure Linux path not allowed - /usr/local)', async () => {
+    // serverInstanceForCwdTest is configured with allowedPaths = ['C:\\tad']
+    // A pure Linux path like /usr/local will not be in C:\tad.
+    const wslPureLinuxPath = '/usr/local';
+     try {
+      await serverInstanceForCwdTest._executeTool({
+        name: 'execute_command',
+        arguments: {
+          shell: 'wsl',
+          command: 'pwd',
+          workingDir: wslPureLinuxPath
+        }
+      });
+      throw new Error('Test failed: Command with pure Linux CWD not in allowedPaths should have been rejected');
+    } catch (e: any) {
+      expect(e).toBeInstanceOf(McpError);
+      expect(e.code).toBe(ErrorCode.InvalidRequest);
+      expect(e.message).toContain(`Working directory (${wslPureLinuxPath}) outside allowed paths`);
     }
   });
 });

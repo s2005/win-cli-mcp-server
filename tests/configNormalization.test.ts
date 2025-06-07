@@ -30,10 +30,10 @@ describe('Validate allowedPaths normalization from config', () => {
     const cfg = loadConfig(CONFIG_PATH);
     const normalized = cfg.security.allowedPaths;
     expect(normalized).toEqual([
-      path.normalize('c:\\somefolder\\test'),
-      path.normalize('c:\\other\\path'),
-      path.normalize('c:\\another\\folder'),
-      path.normalize('d:\\incorrect\\path')
+      path.normalize('c:\\somefolder\\test'), // Stays Windows path
+      path.normalize('c:\\other\\path'),     // This was /c/other/path, now normalized to C:\other\path
+      path.normalize('c:\\another\\folder'), // Stays Windows path
+      '/mnt/d/incorrect/path',              // This was /mnt/d/incorrect/path, preserved as WSL path
     ]);
   });
   

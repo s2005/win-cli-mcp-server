@@ -309,11 +309,19 @@ class CLIServer {
           // Execute command
           return new Promise((resolve, reject) => {
             let shellProcess: ReturnType<typeof spawn>;
+            let spawnArgs: string[];
+
+            if (shellKey === 'wsl') {
+              const parsedWslCommand = parseCommand(args.command);
+              spawnArgs = [...shellConfig.args, parsedWslCommand.command, ...parsedWslCommand.args];
+            } else {
+              spawnArgs = [...shellConfig.args, args.command];
+            }
 
             try {
               shellProcess = spawn(
                 shellConfig.command,
-                [...shellConfig.args, args.command],
+                spawnArgs, // Use the conditionally prepared spawnArgs
                 { cwd: effectiveSpawnCwd, stdio: ['pipe', 'pipe', 'pipe'] }
               );
             } catch (err) {
