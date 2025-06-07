@@ -21,7 +21,8 @@ export function createSerializableConfig(config: ServerConfig): any {
         enabled: shell.enabled,
         command: shell.command,
         args: [...shell.args],
-        blockedOperators: shell.blockedOperators ? [...shell.blockedOperators] : []
+        blockedOperators: shell.blockedOperators ? [...shell.blockedOperators] : [],
+        ...(shell.instanceName !== undefined ? { instanceName: shell.instanceName } : {})
       };
       return acc;
     }, {} as Record<string, any>)

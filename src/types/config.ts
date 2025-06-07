@@ -14,6 +14,8 @@ export interface ShellConfig {
   args: string[];
   validatePath?: (dir: string) => boolean;
   blockedOperators?: string[]; // Added for shell-specific operator restrictions
+  /** Optional WSL instance name (ignored for other shells). Empty string uses the default instance */
+  instanceName?: string;
 }
 
 export interface ServerConfig {

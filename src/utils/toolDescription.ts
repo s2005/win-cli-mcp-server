@@ -63,5 +63,19 @@ export function buildToolDescription(allowedShells: string[]): string[] {
     );
   }
 
+  if (allowedShells.includes('wsl')) {
+    descriptionLines.push(
+      "Example usage (WSL):",
+      "```json",
+      "{",
+      "  \"shell\": \"wsl\",",
+      "  \"command\": \"ls -la\",",
+      "  \"workingDir\": \"/home/username\"",
+      "}",
+      "```",
+      ""
+    );
+  }
+
   return descriptionLines;
 }

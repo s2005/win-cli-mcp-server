@@ -13,4 +13,10 @@ describe('wsl emulator', () => {
     expect(result.status).toBe(0);
     expect(result.stdout.trim()).toBe('hello');
   });
+
+  test('supports distribution flag', () => {
+    const result = spawnSync(wslPath, ['-d', 'Ubuntu', 'echo world'], { encoding: 'utf8' });
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe('world');
+  });
 });

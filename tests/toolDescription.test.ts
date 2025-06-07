@@ -3,25 +3,28 @@ import { buildToolDescription } from '../src/utils/toolDescription.js';
 
 describe('Tool Description Generation', () => {
   test('generates correct description with all shells enabled', () => {
-    const allowedShells = ['powershell', 'cmd', 'gitbash'];
+    const allowedShells = ['powershell', 'cmd', 'gitbash', 'wsl'];
     const description = buildToolDescription(allowedShells);
 
     // Check header
-    expect(description[0]).toBe('Execute a command in the specified shell (powershell, cmd, gitbash)');
+    expect(description[0]).toBe('Execute a command in the specified shell (powershell, cmd, gitbash, wsl)');
     
     // Check that all examples are included
     expect(description).toContain('Example usage (PowerShell):');
     expect(description).toContain('Example usage (CMD):');
     expect(description).toContain('Example usage (Git Bash):');
+    expect(description).toContain('Example usage (WSL):');
     
     // Check specific content for each shell example
     const powershellLine = description.find(line => line.includes('"shell": "powershell"'));
     const cmdLine = description.find(line => line.includes('"shell": "cmd"'));
     const gitbashLine = description.find(line => line.includes('"shell": "gitbash"'));
+    const wslLine = description.find(line => line.includes('"shell": "wsl"'));
     
     expect(powershellLine).toBeDefined();
     expect(cmdLine).toBeDefined();
     expect(gitbashLine).toBeDefined();
+    expect(wslLine).toBeDefined();
   });
 
   test('generates correct description with only cmd enabled', () => {

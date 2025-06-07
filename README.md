@@ -178,11 +178,14 @@ If no configuration file is found, the server will use a default (restricted) co
       "enabled": true,
       "command": "wsl.exe",
       "args": [],
+      "instanceName": "",
       "blockedOperators": ["&", "|", ";", "`"]
     }
   }
 }
 ```
+
+`instanceName` defines which WSL distribution is used; an empty string means the default instance will run commands.
 
 ### Configuration Settings
 
@@ -275,11 +278,14 @@ The configuration file is divided into two main sections: `security` and `shells
       "enabled": true,
       "command": "wsl.exe",
       "args": [],
+      "instanceName": "", // Optional WSL distribution name
       "blockedOperators": ["&", "|", ";", "`"]  // Block all command chaining
     }
   }
 }
 ```
+
+- `instanceName` allows specifying which WSL distribution to use. Leave it empty to use the default instance.
 
 
 #### Chained Commands
@@ -304,7 +310,7 @@ You can execute a series of commands in one request by joining them with `&&`. T
 
   - Execute a command in the specified shell
   - Inputs:
-    - `shell` (string): Shell to use ("powershell", "cmd", "gitbash", or "wsl")
+    - `shell` (string): Shell to use ("powershell", "cmd", "gitbash", or "wsl" - uses configured `instanceName` if provided)
     - `command` (string): Command to execute
     - `workingDir` (optional string): Working directory
   - Returns command output as text, or error message if execution fails

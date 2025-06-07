@@ -287,9 +287,13 @@ class CLIServer {
               let shellProcess: ReturnType<typeof spawn>;
               
               try {
+                const spawnArgs = [...shellConfig.args];
+                if (shellKey === 'wsl' && shellConfig.instanceName) {
+                  spawnArgs.push('-d', shellConfig.instanceName);
+                }
                 shellProcess = spawn(
                   shellConfig.command,
-                  [...shellConfig.args, args.command],
+                  [...spawnArgs, args.command],
                   { cwd: workingDir, stdio: ['pipe', 'pipe', 'pipe'] }
                 );
               } catch (err) {

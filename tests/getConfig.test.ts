@@ -56,6 +56,7 @@ describe('get_config tool', () => {
         enabled: true,
         command: 'wsl.exe',
         args: [],
+        instanceName: 'Ubuntu',
         blockedOperators: ['&', '|']
       }
     }
@@ -88,6 +89,7 @@ describe('get_config tool', () => {
     expect(safeConfig.shells.cmd.enabled).toBe(testConfig.shells.cmd.enabled);
     expect(safeConfig.shells.gitbash.enabled).toBe(testConfig.shells.gitbash.enabled);
     expect(safeConfig.shells.wsl.enabled).toBe(testConfig.shells.wsl.enabled);
+    expect(safeConfig.shells.wsl.instanceName).toBe(testConfig.shells.wsl.instanceName);
     
     // Verify that function properties are not included in the serializable config
     expect(safeConfig.shells.powershell.validatePath).toBeUndefined();
@@ -121,6 +123,9 @@ describe('get_config tool', () => {
       expect(safeConfig.shells[shellName]).toHaveProperty('command');
       expect(safeConfig.shells[shellName]).toHaveProperty('args');
       expect(safeConfig.shells[shellName]).toHaveProperty('blockedOperators');
+      if (shellName === 'wsl') {
+        expect(safeConfig.shells[shellName]).toHaveProperty('instanceName');
+      }
     });
 
   });

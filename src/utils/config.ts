@@ -54,6 +54,7 @@ export const DEFAULT_CONFIG: ServerConfig = {
       enabled: true,
       command: 'wsl.exe',
       args: [],
+      instanceName: '',
       validatePath: (dir: string) => dir.match(defaultValidatePathRegex) !== null,
       blockedOperators: ['&', '|', ';', '`']
     }
