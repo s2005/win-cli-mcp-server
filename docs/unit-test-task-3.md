@@ -28,6 +28,23 @@ Add comprehensive tests for process management functionality including timeouts,
 
 ## Implementation Details
 
+```typescript
+// tests/processManagement.test.ts
+describe('Process Management', () => {
+  test('should terminate process on timeout', async () => {
+    // Test command timeout functionality
+  });
+  
+  test('should handle process spawn errors gracefully', async () => {
+    // Test error handling when shell cannot be spawned
+  });
+  
+  test('should properly clean up child processes', async () => {
+    // Test cleanup on server shutdown
+  });
+});
+```
+
 - Mock child_process spawn and exec functions
 - Test timeout scenarios with actual timing validation
 - Verify error propagation from failed process starts

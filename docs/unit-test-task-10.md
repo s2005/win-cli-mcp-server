@@ -34,6 +34,13 @@ Implement snapshot testing for complex outputs like tool descriptions and config
 - Test both positive and error scenarios with snapshots
 - Ensure snapshots are deterministic and platform-independent
 
+```typescript
+test('should generate correct tool description', () => {
+  const description = buildToolDescription(['powershell', 'cmd', 'wsl']);
+  expect(description).toMatchSnapshot();
+});
+```
+
 ## Dependencies
 
 - **Requires**: Task 1 (ES Module fixes)

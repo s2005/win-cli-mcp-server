@@ -30,10 +30,34 @@ Create standardized test data fixtures and configuration objects to ensure consi
 
 ## Implementation Details
 
-- Create secureConfig, permissiveConfig, and testConfig objects
-- Build data builders for commands, paths, and responses
-- Create mock shell configurations for different scenarios
-- Ensure fixtures cover both positive and negative test cases
+```typescript
+// tests/fixtures/configs.ts
+export const secureConfig: ServerConfig = {
+  security: {
+    maxCommandLength: 1000,
+    blockedCommands: ['rm', 'del', 'format'],
+    blockedArguments: ['--system', '-rf'],
+    allowedPaths: ['C:\\safe\\path'],
+    restrictWorkingDirectory: true,
+    commandTimeout: 30,
+    enableInjectionProtection: true
+  },
+  shells: {
+    powershell: {
+      enabled: true,
+      command: 'powershell.exe',
+      args: ['-NoProfile', '-Command'],
+      blockedOperators: ['&', ';', '`']
+    }
+  }
+};
+
+export const permissiveConfig: ServerConfig = {
+  // Config with relaxed security for testing
+};
+```
+
+// ...existing implementation details...
 
 ## Dependencies
 

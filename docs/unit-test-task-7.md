@@ -30,6 +30,24 @@ Create end-to-end integration tests that validate complete workflows and interac
 
 ## Implementation Details
 
+```typescript
+// tests/integration/endToEnd.test.ts
+describe('End-to-End Scenarios', () => {
+  test('should execute PowerShell script with proper isolation', async () => {
+    const server = new TestCLIServer(testConfig);
+    const result = await server.executeCommand({
+      shell: 'powershell',
+      command: 'Get-ChildItem | Select-Object -First 5',
+      workingDir: 'D:\\mcp'
+    });
+    
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain('Mode');
+    expect(result.workingDirectory).toBe('D:\\mcp');
+  });
+});
+```
+
 - Create TestCLIServer for integration testing
 - Test actual command execution with controlled environments
 - Verify security restrictions work in real scenarios  

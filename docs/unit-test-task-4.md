@@ -28,6 +28,19 @@ Create tests for asynchronous command execution scenarios including concurrent o
 
 ## Implementation Details
 
+```typescript
+// tests/asyncOperations.test.ts
+describe('Async Command Execution', () => {
+  test('should handle concurrent command executions', async () => {
+    // Test multiple simultaneous commands
+  });
+  
+  test('should queue commands when limit reached', async () => {
+    // Test command queueing behavior
+  });
+});
+```
+
 - Use Promise.all() and Promise.race() in test scenarios
 - Mock async operations with controlled timing
 - Test command concurrency limits

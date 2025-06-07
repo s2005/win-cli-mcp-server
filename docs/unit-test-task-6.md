@@ -33,6 +33,31 @@ Enhance existing tests by implementing parameterized testing patterns to improve
 - Add home directory expansion tests
 - Enhance Windows path normalization test cases
 
+```typescript
+describe('Path Normalization', () => {
+  test.each([
+    ['C:/Users/test', 'C:\\Users\\test'],
+    ['\\Users\\test', 'C:\\Users\\test'],
+    ['/mnt/c/foo', '/mnt/c/foo'],
+    ['//server/share', '\\\\server\\share'],
+    ['C:folder', 'C:\\folder'],
+    ['~/test', 'C:\\Users\\currentuser\\test'] // Add home directory expansion
+  ])('normalizeWindowsPath(%s) should return %s', (input, expected) => {
+    expect(normalizeWindowsPath(input)).toBe(expected);
+  });
+});
+```
+
+```typescript
+test('should provide helpful error messages for common issues', () => {
+  expect(() => validateWorkingDirectory('E:\\NotAllowed', allowedPaths))
+    .toThrow(expect.objectContaining({
+      message: expect.stringContaining('allowed paths'),
+      code: ErrorCode.InvalidRequest
+    }));
+});
+```
+
 ## Dependencies
 
 - **Requires**: Task 1 (ES Module fixes) and Task 2 (Test Helpers)

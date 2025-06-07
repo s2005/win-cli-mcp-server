@@ -28,6 +28,26 @@ Create reusable test utilities to reduce duplication across test files, particul
 
 ## Implementation Details
 
+Create reusable test utilities to reduce duplication:
+
+```typescript
+// tests/helpers/pathHelpers.ts
+export function mockWindowsPaths() {
+  const origAbs = path.isAbsolute;
+  const origRes = path.resolve;
+  
+  beforeEach(() => {
+    (path as any).isAbsolute = (p: string) => /^([a-zA-Z]:\\|\\\\)/.test(p) || origAbs(p);
+    (path as any).resolve = (...segments: string[]) => path.win32.resolve(...segments);
+  });
+  
+  afterEach(() => {
+    (path as any).isAbsolute = origAbs;
+    (path as any).resolve = origRes;
+  });
+}
+```
+
 - Create mockWindowsPaths() function for consistent path mocking
 - Build configuration builders for different test scenarios
 - Extract common beforeEach/afterEach patterns into reusable functions

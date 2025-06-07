@@ -29,6 +29,32 @@ Reorganize the test file structure to improve maintainability and logical groupi
 
 ## Implementation Details
 
+Proposed directory structure for improved test organization:
+
+```shell
+tests/
+├── unit/
+│   ├── validation/
+│   │   ├── commandValidation.test.ts
+│   │   ├── pathValidation.test.ts
+│   │   └── argumentValidation.test.ts
+│   ├── config/
+│   │   ├── loading.test.ts
+│   │   └── serialization.test.ts
+│   └── wsl/
+│       ├── pathConversion.test.ts
+│       └── execution.test.ts
+├── integration/
+│   ├── shellExecution.test.ts
+│   └── mcpProtocol.test.ts
+├── fixtures/
+│   ├── configs.ts
+│   └── testData.ts
+└── helpers/
+    ├── MockCLIServer.ts
+    └── testUtils.ts
+```
+
 - Create unit/validation/, unit/config/, unit/wsl/ subdirectories
 - Split large test files like validation.test.ts into focused modules
 - Update import paths and Jest configuration as needed

@@ -28,6 +28,22 @@ Create performance tests to ensure the system handles large outputs, concurrent 
 
 ## Implementation Details
 
+```typescript
+// tests/performance.test.ts
+describe('Performance', () => {
+  test('should handle large command outputs efficiently', async () => {
+    const largeOutput = 'x'.repeat(1024 * 1024); // 1MB
+    const startTime = Date.now();
+    
+    // Test command that generates large output
+    const result = await executeCommand('echo ' + largeOutput);
+    
+    const duration = Date.now() - startTime;
+    expect(duration).toBeLessThan(5000); // Should complete within 5 seconds
+  });
+});
+```
+
 - Generate large test outputs for performance validation
 - Use performance timing APIs for accurate measurements
 - Test memory usage patterns with different scenarios

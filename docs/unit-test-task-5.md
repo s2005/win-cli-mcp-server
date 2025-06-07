@@ -28,6 +28,19 @@ Create comprehensive error handling tests to ensure the server gracefully handle
 
 ## Implementation Details
 
+```typescript
+// tests/errorHandling.test.ts
+describe('Error Handling', () => {
+  test('should handle malformed JSON-RPC requests', async () => {
+    // Test invalid request handling
+  });
+  
+  test('should recover from shell crashes', async () => {
+    // Test resilience to shell process crashes
+  });
+});
+```
+
 - Mock various error scenarios (network, file system, process)
 - Test error message formatting and error codes
 - Verify error recovery mechanisms
