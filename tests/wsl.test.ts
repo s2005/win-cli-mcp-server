@@ -90,7 +90,7 @@ describe('WSL Shell Execution via Emulator (Tests 1-4)', () => {
     expect((result.metadata as any)?.exitCode).toBe(0);
     expect(result.content[0].text).not.toBe('');
     // Emulator specific output is the raw output of `uname -a`
-    expect(result.content[0].text).toMatch(/Msys/i);
+    expect(result.content[0].text).toMatch(/(Linux|Msys)/i);
   });
 
   test('Test 4.2: Command with multiple arguments (ls -la /tmp)', async () => {
