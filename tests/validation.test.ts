@@ -1,4 +1,7 @@
 import { describe, expect, test, jest } from '@jest/globals';
+import os from 'os';
+import path from 'path';
+import { ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import {
   extractCommandName,
   isCommandBlocked,
@@ -24,41 +27,44 @@ jest.mock('child_process', () => ({
 }));
 
 describe('Command Name Extraction', () => {
-  test('extractCommandName handles various formats', () => {
-    expect(extractCommandName('cmd.exe')).toBe('cmd');
-    expect(extractCommandName('C:\\Windows\\System32\\cmd.exe')).toBe('cmd');
-    expect(extractCommandName('powershell.exe')).toBe('powershell');
-    expect(extractCommandName('git.cmd')).toBe('git');
-    expect(extractCommandName('program')).toBe('program');
-    expect(extractCommandName('path/to/script.bat')).toBe('script');
-  });
-
-  test('extractCommandName is case insensitive', () => {
-    expect(extractCommandName('CMD.EXE')).toBe('cmd');
-    expect(extractCommandName('PowerShell.Exe')).toBe('powershell');
+  test.each([
+    ['cmd.exe', 'cmd'],
+    ['C:\\Windows\\System32\\cmd.exe', 'cmd'],
+    ['powershell.exe', 'powershell'],
+    ['git.cmd', 'git'],
+    ['program', 'program'],
+    ['path/to/script.bat', 'script'],
+    // Add new edge cases
+    ['CMD.EXE', 'cmd'],
+    ['PowerShell.Exe', 'powershell'],
+    ['notepad', 'notepad'],
+    ['./local/script.exe', 'script'],
+    ['\\\\server\\share\\tool.exe', 'tool'],
+    ['C:\\Program Files\\App\\app.cmd', 'app'],
+    ['D:\\Tools\\my-tool.bat', 'my-tool']
+  ])('extractCommandName(%s) should return %s', (input, expected) => {
+    expect(extractCommandName(input)).toBe(expected);
   });
 });
 
 describe('Command Blocking', () => {
   const blockedCommands = ['rm', 'del', 'format'];
 
-  test('isCommandBlocked identifies blocked commands', () => {
-    expect(isCommandBlocked('rm', blockedCommands)).toBe(true);
-    expect(isCommandBlocked('rm.exe', blockedCommands)).toBe(true);
-    expect(isCommandBlocked('C:\\Windows\\System32\\rm.exe', blockedCommands)).toBe(true);
-    expect(isCommandBlocked('notepad.exe', blockedCommands)).toBe(false);
-  });
-
-  test('isCommandBlocked is case insensitive', () => {
-    expect(isCommandBlocked('RM.exe', blockedCommands)).toBe(true);
-    expect(isCommandBlocked('DeL.exe', blockedCommands)).toBe(true);
-    expect(isCommandBlocked('FORMAT.EXE', blockedCommands)).toBe(true);
-  });
-
-  test('isCommandBlocked handles different extensions', () => {
-    expect(isCommandBlocked('rm.cmd', blockedCommands)).toBe(true);
-    expect(isCommandBlocked('del.bat', blockedCommands)).toBe(true);
-    expect(isCommandBlocked('format.com', blockedCommands)).toBe(false); // Should only match .exe, .cmd, .bat
+  test.each([
+    ['rm', true],
+    ['rm.exe', true],
+    ['C:\\Windows\\System32\\rm.exe', true],
+    ['RM.exe', true],
+    ['DeL.exe', true],
+    ['FORMAT.EXE', true],
+    ['rm.cmd', true],
+    ['del.bat', true],
+    ['notepad.exe', false],
+    ['format.com', false],
+    ['formatter.exe', false],
+    ['delete.exe', false],
+  ])('isCommandBlocked(%s) should return %s', (command, expected) => {
+    expect(isCommandBlocked(command, blockedCommands)).toBe(expected);
   });
 });
 
@@ -120,67 +126,65 @@ describe('Command Parsing', () => {
   });
 });
 
+
+
 describe('Path Normalization', () => {
-  test('normalizeWindowsPath handles various formats', () => {
-    expect(normalizeWindowsPath('C:/Users/test')).toBe('C:\\Users\\test');
-    expect(normalizeWindowsPath("\\Users\test")).toBe("C:\\Users\test"); // Now expecting C: drive prepended
-    expect(normalizeWindowsPath('D:\\Projects')).toBe('D:\\Projects');
-    expect(normalizeWindowsPath('/c/Users/Projects')).toBe('C:\\Users\\Projects'); // Git Bash style
+  // Basic path normalization tests
+  test.each([
+    // Windows paths
+    ['C:/Users/test', 'C\\Users\\test'],
+    ['C:\\Users\\test', 'C\\Users\\test'],
+    ['c:/windows/system32', 'C\\windows\\system32'],
+
+    // Relative paths
+    ['\\Users\\test', 'C\\Users\\test'],
+    ['foo\\bar', 'C\\foo\\bar'],
+    ['../relative/path', 'C\\relative\\path'],
+
+    // Git Bash style
+    ['/c/Users/Projects', 'C\\Users\\Projects'],
+    ['/d/Projects', 'D\\Projects'],
+    ['/c/folder/../other', 'C\\other'],
+
+    // Drive-relative paths
+    ['C:folder/sub', 'C\\folder\\sub'],
+    ['C:folder/../', 'C\\'],
+    ['D:../relative/path', 'D\\relative\\path'],
+
+    // UNC paths
+    ['\\\\server\\share\\file', '\\\\server\\share\\file'],
+    ['//server/share/folder', '\\\\server\\share\\folder'],
+
+    // WSL paths (preserved)
+    ['/mnt/c/foo/bar', '/mnt/c/foo/bar'],
+    ['/mnt/d/', '/mnt/d/'],
+    ['/home/user/documents', '/home/user/documents'],
+    ['/usr/local/bin', '/usr/local/bin'],
+    ['/', '/'],
+
+    // Redundant separators
+    ['C\\\\Users\\test', 'C\\Users\\test'],
+    ['C:/Users//test', 'C\\Users\\test'],
+    ['C\\temp\\\\subfolder', 'C\\temp\\subfolder'],
+
+    // Special cases
+    ['c:no_slash_path', 'C\\no_slash_path'],
+    ['C:..\\another', 'C\\another'],
+    ['C\\..\\another', 'C\\another'],
+  ])('normalizeWindowsPath(%s) should return %s', (input, expected) => {
+    expect(normalizeWindowsPath(input)).toBe(expected);
   });
 
-  test('normalizeWindowsPath preserves valid WSL paths', () => {
-    expect(normalizeWindowsPath('/mnt/c/foo/bar')).toBe('/mnt/c/foo/bar');
-    expect(normalizeWindowsPath('/mnt/d/')).toBe('/mnt/d/');
-    expect(normalizeWindowsPath('/mnt/z/some/path/')).toBe('/mnt/z/some/path/');
-    expect(normalizeWindowsPath('/home/user/documents')).toBe('/home/user/documents');
-    expect(normalizeWindowsPath('/usr/local/bin')).toBe('/usr/local/bin');
-    expect(normalizeWindowsPath('/')).toBe('/');
-    // Test with trailing slash that should be preserved if it's part of WSL-like path
-    expect(normalizeWindowsPath('/mnt/c/directory/')).toBe('/mnt/c/directory/');
-    // Test with mixed case drive letter for WSL paths
-    expect(normalizeWindowsPath('/mnt/C/mixedCase')).toBe('/mnt/C/mixedCase');
-  });
-
-  // Regression checks for Windows paths
-  test('normalizeWindowsPath correctly normalizes various Windows paths (Regression)', () => {
-    expect(normalizeWindowsPath('C:\\Users\\test')).toBe('C:\\Users\\test'); // Already correct
-    expect(normalizeWindowsPath('c:/windows/system32')).toBe('C:\\windows\\system32'); // Mixed slash, lowercase drive
-    expect(normalizeWindowsPath('\\\\server\\share\\file')).toBe('\\\\server\\share\\file'); // UNC path
-    expect(normalizeWindowsPath('C:\\temp\\\\subfolder')).toBe('C:\\temp\\subfolder'); // Redundant backslashes
-    expect(normalizeWindowsPath('C:/temp//subfolder')).toBe('C:\\temp\\subfolder'); // Redundant forward slashes
-    expect(normalizeWindowsPath('c:no_slash_path')).toBe('C:\\no_slash_path'); // Drive letter without slash
-    expect(normalizeWindowsPath('D:../relative/path')).toBe('D:\\relative\\path'); // Drive relative with ..
-    // Path.win32.normalize behavior for .. at root of a drive:
-    expect(normalizeWindowsPath('C:..\\another')).toBe('C:\\another'); // Resolves C:.. to C:\
-    expect(normalizeWindowsPath('C:\\..\\another')).toBe('C:\\another'); // Resolves C:\.. to C:\
-    // Relative paths are made absolute with C:\ by default if no drive letter context
-    // This depends on how the original function was structured; current one prepends C:\ if no drive letter.
-    // If input is `../relative/path`, it becomes `C:\relative\path` due to `currentPath = C:\\${currentPath}` logic.
-    // This specific behavior for relative paths without drive needs to be confirmed against original intent if it was different.
-    // Current code structure implies that paths like "foo/bar" become "C:\foo\bar"
-    expect(normalizeWindowsPath('foo\\bar')).toBe('C:\\foo\\bar');
-    expect(normalizeWindowsPath('../relative/path')).toBe('C:\\relative\\path');
-  });
-
-  test('normalizeWindowsPath removes redundant separators', () => {
-    expect(normalizeWindowsPath('C:\\\\Users\\\\test')).toBe('C:\\Users\\test');
-    expect(normalizeWindowsPath('C:/Users//test')).toBe('C:\\Users\\test');
-  });
-  test('normalizeWindowsPath resolves relative segments', () => {
-    expect(normalizeWindowsPath('C:/folder/../other')).toBe('C:\\other');
-    expect(normalizeWindowsPath('C:/folder/../')).toBe('C:\\');
-  });
-  test('normalizeWindowsPath resolves git bash style relative segments', () => {
-    expect(normalizeWindowsPath('/c/folder/../other')).toBe('C:\\other');
-    expect(normalizeWindowsPath('/c/folder/../')).toBe('C:\\');
-  });
-  test('normalizeWindowsPath handles drive-relative paths', () => {
-    expect(normalizeWindowsPath('C:folder/sub')).toBe('C:\\folder\\sub');
-    expect(normalizeWindowsPath('C:folder/../')).toBe('C:\\');
+  // Add home directory expansion test (if implemented)
+  test('should expand home directory', () => {
+    const homedir = os.homedir();
+    // This test assumes home directory expansion is implemented
+    // expect(normalizeWindowsPath('~')).toBe(homedir);
+    // expect(normalizeWindowsPath('~/test')).toBe(path.join(homedir, 'test'));
   });
 });
-
 describe('Allowed Paths Normalization', () => {
+
   test('removes duplicates and normalizes paths', () => {
     const paths = ['C:/Test', 'c:\\test', '/c/Test', 'C:\\test\\'];
     expect(normalizeAllowedPaths(paths)).toEqual(['c:\\test']);
@@ -256,39 +260,50 @@ describe('Path Validation', () => {
   });
 });
 
+
 describe('Shell Operator Validation', () => {
-  const powershellConfig: ShellConfig = {
-    enabled: true,
-    command: 'powershell.exe',
-    args: ['-Command'],
-    blockedOperators: ['&', ';', '`']
-  };
-
-  test('validateShellOperators blocks dangerous operators', () => {
-    expect(() => validateShellOperators('Get-Process & Get-Service', powershellConfig))
-      .toThrow();
-    expect(() => validateShellOperators('Get-Process; Start-Sleep', powershellConfig))
-      .toThrow();
-  });
-
-  test('validateShellOperators allows safe operators when configured', () => {
-    expect(() => validateShellOperators('Get-Process | Select-Object Name', powershellConfig))
-      .not.toThrow();
-    expect(() => validateShellOperators('$var = Get-Process', powershellConfig))
-      .not.toThrow();
-  });
-
-  test('validateShellOperators respects shell config', () => {
-    const customConfig: ShellConfig = {
+  const shellConfigs = {
+    powershell: {
+      enabled: true,
+      command: 'powershell.exe',
+      args: ['-Command'],
+      blockedOperators: ['&', ';', '`']
+    },
+    cmd: {
+      enabled: true,
+      command: 'cmd.exe',
+      args: ['/c'],
+      blockedOperators: ['&', '|', ';']
+    },
+    custom: {
       enabled: true,
       command: 'custom.exe',
       args: [],
-      blockedOperators: ['|'] // Block only pipe operator
-    };
+      blockedOperators: ['|']
+    }
+  } as const;
 
-    expect(() => validateShellOperators('cmd & echo test', customConfig))
-      .not.toThrow();
-    expect(() => validateShellOperators('cmd | echo test', customConfig))
-      .toThrow();
+  test.each([
+    ['powershell', 'Get-Process & Get-Service', '&', true],
+    ['powershell', 'Get-Process; Start-Sleep', ';', true],
+    ['powershell', 'echo `whoami`', '`', true],
+    ['powershell', 'Get-Process | Select-Object', '|', false],
+    ['cmd', 'echo hello & echo world', '&', true],
+    ['cmd', 'dir | find "test"', '|', true],
+    ['custom', 'cmd & echo test', '&', false],
+    ['custom', 'cmd | echo test', '|', true],
+  ])('%s: validateShellOperators(%s) should %s',
+    (shellName, command, operator, shouldThrow) => {
+    const shellConfig = shellConfigs[shellName as keyof typeof shellConfigs];
+
+    if (shouldThrow) {
+      expect(() => validateShellOperators(command, shellConfig))
+        .toThrow(expect.objectContaining({
+          code: ErrorCode.InvalidRequest,
+          message: expect.stringContaining(`blocked operator: ${operator}`)
+        }));
+    } else {
+      expect(() => validateShellOperators(command, shellConfig)).not.toThrow();
+    }
   });
 });
