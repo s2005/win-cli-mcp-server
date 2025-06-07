@@ -27,6 +27,24 @@ Tests that import `CLIServer` from `src/index.js` fail with 193-second timeouts 
 
 ## Implementation Details
 
+**Problem**: Tests that import `CLIServer` from `src/index.js` fail with 193-second timeouts.
+
+**Solution**:
+
+```typescript
+// tests/helpers/MockCLIServer.ts
+import { ServerConfig } from '../../src/types/config.js';
+import { validateCommand, validateWorkingDirectory } from '../../src/utils/validation.js';
+
+export class MockCLIServer {
+  constructor(public config: ServerConfig) {}
+  
+  validateCommand(shellKey: string, command: string, workingDir: string): void {
+    // Implementation without ES module dependencies
+  }
+}
+```
+
 - Create MockCLIServer class that implements required functionality without ES module dependencies
 - Replace direct imports from `src/index.js` with mock implementations
 - Validate that validateCommand and validateWorkingDirectory functions are properly accessible
