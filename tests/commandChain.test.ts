@@ -2,7 +2,10 @@ import path from 'path';
 import { describe, expect, test, beforeAll, afterAll, jest } from '@jest/globals';
 import { MockCLIServer } from './helpers/MockCLIServer.js';
 import { DEFAULT_CONFIG } from '../src/utils/config.js';
+import { mockWindowsPaths } from './helpers/pathHelpers.js';
+import { buildTestConfig } from './helpers/testUtils.js';
 
+mockWindowsPaths();
 jest.mock('@modelcontextprotocol/sdk/server/index.js', () => {
   return {
     Server: jest.fn().mockImplementation(() => {
@@ -25,16 +28,14 @@ let config: any;
 
 beforeAll(() => {
   tempDir = '/c/win-cli-test';
-  config = {
+  config = buildTestConfig({
     security: {
-      ...DEFAULT_CONFIG.security,
       allowedPaths: [tempDir],
       blockedCommands: ['rm'],
       blockedArguments: ['--exec'],
       enableInjectionProtection: false
-    },
-    shells: DEFAULT_CONFIG.shells
-  };
+    }
+  });
 });
 
 afterAll(() => {
@@ -45,50 +46,28 @@ describe('validateCommand chained operations', () => {
   test('allows cd within allowed path', () => {
     const server = new MockCLIServer(config);
     const subDir = path.join(tempDir, 'sub');
-    const origAbs = path.isAbsolute;
-    const origRes = path.resolve;
-    (path as any).isAbsolute = (p: string) => /^([a-zA-Z]:\\|\\\\)/.test(p) || origAbs(p);
-    (path as any).resolve = (...segments: string[]) => path.win32.resolve(...segments);
     expect(() => {
       (server as any).validateCommand('cmd', `cd ${subDir} && echo hi`, tempDir);
     }).not.toThrow();
-    (path as any).isAbsolute = origAbs;
-    (path as any).resolve = origRes;
   });
 
   test('rejects cd to disallowed path', () => {
     const server = new MockCLIServer(config);
-    const origAbs = path.isAbsolute;
-    const origRes = path.resolve;
-    (path as any).isAbsolute = (p: string) => /^([a-zA-Z]:\\|\\\\)/.test(p) || origAbs(p);
-    (path as any).resolve = (...segments: string[]) => path.win32.resolve(...segments);
     expect(() => {
       (server as any).validateCommand('cmd', 'cd C:\\Windows && echo hi', tempDir);
     }).toThrow();
-    (path as any).isAbsolute = origAbs;
-    (path as any).resolve = origRes;
   });
 
   test('rejects relative cd escaping allowed path', () => {
     const server = new MockCLIServer(config);
     const sub = path.join(tempDir, 'inner');
-    const origAbs = path.isAbsolute;
-    const origRes = path.resolve;
-    (path as any).isAbsolute = (p: string) => /^([a-zA-Z]:\\|\\\\)/.test(p) || origAbs(p);
-    (path as any).resolve = (...segments: string[]) => path.win32.resolve(...segments);
     expect(() => {
       (server as any).validateCommand('cmd', 'cd .. && dir', sub);
     }).toThrow();
-    (path as any).isAbsolute = origAbs;
-    (path as any).resolve = origRes;
   });
 
   test('rejects blocked commands and arguments in chain', () => {
     const server = new MockCLIServer(config);
-    const origAbs = path.isAbsolute;
-    const origRes = path.resolve;
-    (path as any).isAbsolute = (p: string) => /^([a-zA-Z]:\\|\\\\)/.test(p) || origAbs(p);
-    (path as any).resolve = (...segments: string[]) => path.win32.resolve(...segments);
     expect(() => {
       (server as any).validateCommand('cmd', `cd ${tempDir} && rm file.txt`, tempDir);
     }).toThrow(/blocked/i);
@@ -96,7 +75,5 @@ describe('validateCommand chained operations', () => {
     expect(() => {
       (server as any).validateCommand('cmd', `cd ${tempDir} && echo hi --exec`, tempDir);
     }).toThrow(/blocked/i);
-    (path as any).isAbsolute = origAbs;
-    (path as any).resolve = origRes;
   });
 });
