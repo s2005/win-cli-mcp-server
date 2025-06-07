@@ -146,6 +146,128 @@ export function parseCommand(fullCommand: string): { command: string; args: stri
     };
 }
 
+export function convertWindowsToWslPath(windowsPath: string, mountPoint: string = '/mnt/'): string {
+  if (windowsPath.startsWith('\\\\') || windowsPath.startsWith('//')) {
+    throw new Error('UNC paths are not supported for WSL conversion.');
+  }
+
+  const driveRegex = /^([a-zA-Z]):([\\/]?.*)$/;
+  const match = windowsPath.match(driveRegex);
+
+  if (match) {
+    const driveLetter = match[1].toLowerCase();
+    let restOfPath = match[2].replace(/\\/g, '/'); // Normalize to forward slashes
+
+    // Remove leading slash from restOfPath if it exists, as it's part of the path components
+    if (restOfPath.startsWith('/')) {
+      restOfPath = restOfPath.substring(1);
+    }
+
+    // Handle trailing slashes for the main path part
+    if (restOfPath.endsWith('/')) {
+        restOfPath = restOfPath.substring(0, restOfPath.length - 1);
+    }
+
+    // Ensure mountPoint ends with a slash
+    const baseMount = mountPoint.endsWith('/') ? mountPoint : mountPoint + '/';
+
+    if (!restOfPath) { // Path was just "C:" or "C:\" or "C:/"
+        return `${baseMount}${driveLetter}`;
+    }
+
+    return `${baseMount}${driveLetter}/${restOfPath}`;
+  }
+
+  // Not a Windows drive path, return as-is
+  return windowsPath;
+}
+
+export function resolveWslAllowedPaths(globalAllowedPaths: string[], wslConfig: ShellConfig): string[] {
+  const wslPaths: string[] = [];
+  const mountPoint = wslConfig.wslMountPoint || '/mnt/';
+
+  if (wslConfig.allowedPaths && wslConfig.allowedPaths.length > 0) {
+    wslConfig.allowedPaths.forEach(p => {
+      if (!wslPaths.includes(p)) {
+        wslPaths.push(p);
+      }
+    });
+  }
+
+  if (wslConfig.inheritGlobalPaths !== false) { // True or undefined
+    globalAllowedPaths.forEach(globalPath => {
+      try {
+        const convertedPath = convertWindowsToWslPath(globalPath, mountPoint);
+        // Add if not already present (either from wslConfig.allowedPaths or a previous conversion)
+        if (!wslPaths.includes(convertedPath)) {
+          wslPaths.push(convertedPath);
+        }
+      } catch (error) {
+        // Check if error is an instance of Error and has a message
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`Skipping global path "${globalPath}" for WSL: ${message}`);
+      }
+    });
+  }
+
+  return wslPaths;
+}
+
+export function isWslPathAllowed(testPath: string, allowedPaths: string[]): boolean {
+  if (!testPath || typeof testPath !== 'string') {
+    return false;
+  }
+  // Normalize testPath: use POSIX normalization for WSL paths
+  let normalizedTestPath = path.posix.normalize(testPath);
+  // Remove trailing slash for consistent comparison, unless it's the root "/"
+  if (normalizedTestPath !== '/' && normalizedTestPath.endsWith('/')) {
+    normalizedTestPath = normalizedTestPath.substring(0, normalizedTestPath.length - 1);
+  }
+
+  return allowedPaths.some(allowedPath => {
+    if (!allowedPath || typeof allowedPath !== 'string') {
+      return false;
+    }
+    // Normalize allowedPath
+    let normalizedAllowedPath = path.posix.normalize(allowedPath);
+    // Remove trailing slash for consistent comparison, unless it's the root "/"
+    if (normalizedAllowedPath !== '/' && normalizedAllowedPath.endsWith('/')) {
+      normalizedAllowedPath = normalizedAllowedPath.substring(0, normalizedAllowedPath.length - 1);
+    }
+
+    // Check for exact match or if testPath is a subdirectory of allowedPath
+    if (normalizedTestPath === normalizedAllowedPath) {
+      return true;
+    }
+    // Ensure that if allowedPath is "/", it correctly matches paths like "/foo"
+    // And if allowedPath is "/foo", it matches "/foo/bar" but not "/foobar"
+    if (normalizedTestPath.startsWith(normalizedAllowedPath + (normalizedAllowedPath === '/' ? '' : '/'))) {
+      return true;
+    }
+    return false;
+  });
+}
+
+export function validateWslWorkingDirectory(dir: string, wslConfig: ShellConfig, globalAllowedPaths: string[]): void {
+  // Ensure dir is an absolute WSL/Linux-style path
+  if (!path.posix.isAbsolute(dir)) {
+      throw new Error('WSL working directory must be an absolute path (e.g., /mnt/c/Users or /home/user)');
+  }
+
+  const resolvedWslAllowedPaths = resolveWslAllowedPaths(globalAllowedPaths, wslConfig);
+
+  if (resolvedWslAllowedPaths.length === 0) {
+    throw new Error('No allowed paths configured for WSL shell. Cannot set working directory.');
+  }
+
+  if (!isWslPathAllowed(dir, resolvedWslAllowedPaths)) {
+    const allowedPathsStr = resolvedWslAllowedPaths.join(', ');
+    throw new Error(
+      `WSL working directory '${dir}' must be within allowed paths: ${allowedPathsStr}`
+    );
+  }
+}
+
 export function isPathAllowed(testPath: string, allowedPaths: string[]): boolean {
     // Step 1: Normalize testPath
     let normalizedTestPath = normalizeWindowsPath(testPath).toLowerCase();

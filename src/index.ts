@@ -17,7 +17,9 @@ import {
   extractCommandName,
   validateShellOperators,
   normalizeWindowsPath,
-  validateWorkingDirectory
+  validateWorkingDirectory,
+  validateWslWorkingDirectory,
+  convertWindowsToWslPath
 } from './utils/validation.js';
 import { validateDirectoriesAndThrow } from './utils/directoryValidator.js';
 import { spawn } from 'child_process';
@@ -303,6 +305,44 @@ class CLIServer {
             // args.workingDir (e.g. /mnt/c/tad/sub) is the conceptual WSL CWD.
             // For the emulator, we just run it in a known valid Linux CWD.
             // The actual CWD validation against allowedPaths has already passed using normalized paths.
+          // This previous validation was for Windows paths.
+          // For WSL, we need to validate the conceptual WSL working directory.
+
+          let pathForWslValidation: string;
+          if (args.workingDir) {
+            // If user provided workingDir for WSL, assume it's a WSL-style path.
+            // Normalize it for consistency.
+            pathForWslValidation = path.posix.normalize(args.workingDir);
+            // Consistent trailing slash removal (unless root)
+            if (pathForWslValidation !== '/' && pathForWslValidation.endsWith('/')) {
+              pathForWslValidation = pathForWslValidation.slice(0, -1);
+            }
+          } else {
+            // If no workingDir provided for WSL command, validate WSL equivalent of host's CWD.
+            try {
+              pathForWslValidation = convertWindowsToWslPath(process.cwd(), shellConfig.wslMountPoint || '/mnt/');
+            } catch (error: any) {
+              throw new McpError(
+                ErrorCode.InvalidRequest,
+                `Failed to convert host current working directory (${process.cwd()}) to WSL path for validation: ${error.message}`
+              );
+            }
+          }
+
+          if (this.config.security.restrictWorkingDirectory) {
+            try {
+              // Validate this conceptual WSL working directory.
+              validateWslWorkingDirectory(pathForWslValidation, shellConfig, Array.from(this.allowedPaths));
+            } catch (error: any) {
+              throw new McpError(
+                ErrorCode.InvalidRequest,
+                `WSL working directory validation failed: ${error.message}. Use validate_directories tool to check allowed paths.`
+              );
+            }
+          }
+
+          // For the wsl.sh SCRIPT itself, it runs in the project root on the host.
+          // The wsl.sh script is responsible for setting the correct CWD *inside* WSL if needed.
             effectiveSpawnCwd = process.cwd(); // e.g., /app
           }
 
