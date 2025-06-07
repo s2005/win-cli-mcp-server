@@ -383,3 +383,33 @@ npm test
 ## License
 
 This project is licensed under the MIT License. See the LICENSE file for details.
+
+## Development Environment using Dev Containers
+
+This project includes a [Dev Container](https://code.visualstudio.com/docs/remote/containers) configuration, which allows you to use a Docker container as a fully-featured development environment. This ensures consistency and makes it easy to get started with development and testing.
+
+### Prerequisites
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running.
+- [Visual Studio Code](https://code.visualstudio.com/) installed.
+- The [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) installed in VS Code.
+
+### Getting Started
+
+1.  Clone this repository to your local machine.
+2.  Open the repository in Visual Studio Code.
+3.  When prompted "Reopen in Container", click the button. (If you don't see a prompt, you can open the Command Palette (Ctrl+Shift+P or Cmd+Shift+P) and select "Dev Containers: Reopen in Container".)
+4.  VS Code will build the dev container image (as defined in `.devcontainer/devcontainer.json` and `Dockerfile`) and start the container. This might take a few minutes the first time.
+5.  Once the container is built and started, your VS Code will be connected to this environment. The `postCreateCommand` (`npm install`) will ensure all dependencies are installed.
+
+### Running Tests
+
+After opening the project in the dev container:
+
+1.  Open a new terminal in VS Code (it will be a terminal inside the container).
+2.  Run the tests using the command:
+    ```bash
+    npm test
+    ```
+
+This setup mirrors the environment used in GitHub Actions for tests, ensuring consistency between local development and CI.
