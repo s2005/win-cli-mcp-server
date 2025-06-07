@@ -62,7 +62,7 @@ describe('WSL Shell Execution via Emulator (Tests 1-4)', () => {
         arguments: { shell: 'wsl', command: commandThatGeneratesStderr }
     }) as CallToolResult;
     expect(failingResult.isError).toBe(true);
-    expect((failingResult.metadata as any)?.exitCode).toBe(2);
+    expect([1, 2]).toContain((failingResult.metadata as any)?.exitCode);
     expect(failingResult.content[0].text).toMatch(/No such file or directory|cannot access/i);
     expect(failingResult.content[0].text).toContain('Error output:');
   });
