@@ -276,10 +276,111 @@ The configuration file is divided into two main sections: `security` and `shells
       "enabled": true,
       "command": "wsl.exe", // Command to invoke WSL
       "args": ["-e"],       // Arguments to pass to wsl.exe for command execution (e.g., '-e' to execute a command)
-      "blockedOperators": ["&", "|", ";", "`"] // Standard blocked operators
+      "blockedOperators": ["&", "|", ";", "`"], // Standard blocked operators
+      "allowedPaths": [], // WSL-specific allowed paths in Linux format (e.g., ["/home/username/projects", "/mnt/d/shared"])
+      "wslMountPoint": "/mnt/", // Mount point prefix for converting Windows global paths to WSL paths (e.g. C:\ becomes /mnt/c/)
+      "inheritGlobalPaths": true // Whether to inherit and convert paths from global security.allowedPaths for WSL use
     }
   }
 }
+```
+
+The `wsl` shell configuration includes specialized options for path management:
+- `allowedPaths`: An array of strings specifying directory paths in Linux format (e.g., `/home/user/project`, `/mnt/c/windows_folder`) that are explicitly permitted for WSL command execution. This is in addition to any paths inherited from the global `security.allowedPaths` if `inheritGlobalPaths` is true.
+- `wslMountPoint`: A string representing the prefix used by your WSL distribution to mount Windows drives (default: `/mnt/`). For example, with `/mnt/`, `C:\Users` becomes `/mnt/c/Users`. This is used when converting global Windows paths for WSL.
+- `inheritGlobalPaths`: A boolean (default: `true`) that determines if WSL should inherit allowed paths from the global `security.allowedPaths` setting. If true, Windows paths from the global list will be converted to their WSL equivalents (e.g., `C:\MyFolder` becomes `/mnt/c/MyFolder`) and added to WSL's list of allowed paths.
+
+### Advanced WSL Path Configuration
+
+WSL shells have a flexible path management system that allows for fine-grained control over where commands can be executed. This involves a combination of global `security.allowedPaths`, WSL-specific `shells.wsl.allowedPaths`, and how they interact via `inheritGlobalPaths` and `wslMountPoint`.
+
+**Configuration Examples:**
+
+**Example 1: Default Behavior (Inheriting Global Paths)**
+
+Global paths are converted and used by WSL.
+
+*   `config.json`:
+    ```json
+    {
+      "security": {
+        "allowedPaths": ["D:\\mcp", "C:\\Users\\username\\projects"],
+        "restrictWorkingDirectory": true
+      },
+      "shells": {
+        "wsl": {
+          "enabled": true,
+          "inheritGlobalPaths": true, // or omitted (defaults to true)
+          "allowedPaths": []
+          // wslMountPoint defaults to /mnt/
+        }
+      }
+    }
+    ```
+*   **Explanation:** WSL will effectively allow command execution in `/mnt/d/mcp` and `/mnt/c/Users/username/projects`.
+
+**Example 2: WSL-Specific Paths with Global Inheritance**
+
+Both WSL-specific paths and converted global paths are allowed.
+
+*   `config.json`:
+    ```json
+    {
+      "security": {
+        "allowedPaths": ["D:\\mcp"],
+        "restrictWorkingDirectory": true
+      },
+      "shells": {
+        "wsl": {
+          "enabled": true,
+          "allowedPaths": ["/home/user", "/tmp"],
+          "inheritGlobalPaths": true
+          // wslMountPoint defaults to /mnt/
+        }
+      }
+    }
+    ```
+*   **Explanation:** WSL will allow command execution in `/home/user`, `/tmp`, and the converted global path `/mnt/d/mcp`.
+
+**Example 3: WSL-Only Paths (No Inheritance)**
+
+Only paths explicitly defined in `shells.wsl.allowedPaths` are permitted; global paths are ignored for WSL.
+
+*   `config.json`:
+    ```json
+    {
+      "security": {
+        "allowedPaths": ["D:\\mcp", "C:\\Users\\username\\projects"], // These will be ignored by WSL
+        "restrictWorkingDirectory": true
+      },
+      "shells": {
+        "wsl": {
+          "enabled": true,
+          "allowedPaths": ["/home/user/projectX", "/opt/app"],
+          "inheritGlobalPaths": false
+        }
+      }
+    }
+    ```
+*   **Explanation:** WSL will only allow command execution in `/home/user/projectX` and `/opt/app`.
+
+**Migration Note:**
+
+Users who previously relied solely on the global `security.allowedPaths` for restricting WSL command execution should review these new settings. The default behavior (`inheritGlobalPaths: true`) is designed to maintain compatibility by automatically converting and including those global paths for WSL. However, for more explicit and granular control, it's recommended to define Linux-style paths directly within `shells.wsl.allowedPaths` and consider setting `inheritGlobalPaths: false` if global paths are not relevant to WSL operations.
+
+**Best Practices for WSL Paths:**
+
+*   For maximum clarity and strict control, define allowed paths directly in `shells.wsl.allowedPaths` using the appropriate Linux path format (e.g., `/home/user/mycode`).
+*   If your WSL distribution uses a non-standard mount point for Windows drives (i.e., not `/mnt/`), ensure you configure `shells.wsl.wslMountPoint` accordingly (e.g., `/windir/`).
+*   Regularly review which paths are accessible to WSL, especially when inheriting global paths, to ensure the principle of least privilege.
+
+### Troubleshooting WSL Paths
+*   Remember that global Windows paths (from `security.allowedPaths`) are converted when used by WSL (e.g., `C:\Users\dev` becomes `/mnt/c/Users/dev` by default if `inheritGlobalPaths` is true).
+*   Paths defined directly in `shells.wsl.allowedPaths` must be in the Linux path format (e.g., `/home/user/my_project` or `/mnt/c/my_windows_folder_in_wsl`).
+*   UNC paths (e.g., `\\\\server\\share`) in `security.allowedPaths` cannot be automatically converted for WSL use via `inheritGlobalPaths` and will be ignored for WSL with a warning.
+*   If `inheritGlobalPaths` is `false`, only paths listed in `shells.wsl.allowedPaths` will be permitted for WSL.
+```
+
 ```
 
 
@@ -342,7 +443,7 @@ This server allows external tools to execute commands on your system. Exercise e
 
 ### Built-in Security Features
 
-- **Path Restrictions**: Commands can only be executed in specified directories (`allowedPaths`) if `restrictWorkingDirectory` is true.
+- **Path Restrictions**: Commands can only be executed in specified directories (`allowedPaths`) if `restrictWorkingDirectory` is true. For WSL, this includes specific WSL paths and inherited/converted global paths. See "Advanced WSL Path Configuration" for details.
 - **Command Blocking**: Defined commands and arguments are blocked to prevent potentially dangerous operations (`blockedCommands`, `blockedArguments`).
 - **Injection Protection**: Common shell injection characters (`;`, `&`, `|`, `` ` ``) are blocked in command strings if `enableInjectionProtection` is true.
 - **Timeout**: Commands are terminated if they exceed the configured timeout (`commandTimeout`).

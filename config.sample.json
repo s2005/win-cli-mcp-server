@@ -44,7 +44,10 @@
       "enabled": true,
       "command": "wsl.exe",
       "args": ["-e"],
-      "blockedOperators": ["&", "|", ";", "`"]
+      "blockedOperators": ["&", "|", ";", "`"],
+      "allowedPaths": [], // WSL-specific allowed paths in Linux format (e.g., ["/home/username/projects", "/mnt/d/shared"])
+      "wslMountPoint": "/mnt/", // Mount point prefix for converting Windows global paths to WSL paths (e.g. C:\ becomes /mnt/c/)
+      "inheritGlobalPaths": true // Whether to inherit and convert paths from global security.allowedPaths for WSL use
     }
   }
 }
