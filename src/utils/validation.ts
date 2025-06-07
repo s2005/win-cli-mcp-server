@@ -1,5 +1,6 @@
 import path from 'path';
 import type { ShellConfig } from '../types/config.js';
+import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js"; // Import McpError and ErrorCode
 
 export function extractCommandName(command: string): string {
     // Replace backslashes with forward slashes
@@ -38,13 +39,13 @@ export function validateShellOperators(command: string, shellConfig: ShellConfig
     }
 
     // Create regex pattern from blocked operators
-    const operatorPattern = shellConfig.blockedOperators
-        .map(op => op.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))  // Escape regex special chars
-        .join('|');
-    
-    const regex = new RegExp(operatorPattern);
-    if (regex.test(command)) {
-        throw new Error(`Command contains blocked operators for this shell: ${shellConfig.blockedOperators.join(', ')}`);
+    // Iterate and test each operator to identify the specific one found.
+    for (const op of shellConfig.blockedOperators) {
+        const escapedOp = op.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // Escape for regex
+        const regex = new RegExp(escapedOp);
+        if (regex.test(command)) {
+            throw new McpError(ErrorCode.InvalidRequest, `Command contains blocked operator: ${op}`);
+        }
     }
 }
 
@@ -147,27 +148,52 @@ export function parseCommand(fullCommand: string): { command: string; args: stri
 
 export function isPathAllowed(testPath: string, allowedPaths: string[]): boolean {
     // Step 1: Normalize testPath
-    const normalizedTestPath = normalizeWindowsPath(testPath)
-        .toLowerCase()
-        .replace(/\\$/, ''); // Remove trailing backslash
+    let normalizedTestPath = normalizeWindowsPath(testPath).toLowerCase();
+    normalizedTestPath = normalizedTestPath.replace(/[/\\]+$/, ''); // Remove ALL trailing slashes
 
     // Step 2: Iterate through allowedPaths
     return allowedPaths.some(allowedPath => {
         // Step 2a: Normalize current allowedPath
-        const normalizedAllowedPath = normalizeWindowsPath(allowedPath)
-            .toLowerCase()
-            .replace(/\\$/, ''); // Remove trailing backslash
+        let normalizedAllowedPath = normalizeWindowsPath(allowedPath).toLowerCase();
+        normalizedAllowedPath = normalizedAllowedPath.replace(/[/\\]+$/, ''); // Remove ALL trailing slashes
 
-        // Step 3: Comparison Logic
-        // a. Exact match
+        // --- DEBUGGING FOR WSL Test 5.1 ---
+        const DEBUG_EXPECTED_NORMALIZED_ALLOWED_PATH = 'c:\\mnt\\c\\tad'; // Allowed path in test
+        const DEBUG_EXPECTED_NORMALIZED_TEST_PATH = 'c:\\mnt\\c\\tad\\sub'; // Test path
+        const IS_DEBUG_TARGET_ALLOWED_PATH = normalizedAllowedPath === DEBUG_EXPECTED_NORMALIZED_ALLOWED_PATH;
+        const IS_DEBUG_TARGET_TEST_PATH = normalizedTestPath === DEBUG_EXPECTED_NORMALIZED_TEST_PATH;
+
+        let comparisonResult = false;
         if (normalizedTestPath === normalizedAllowedPath) {
-            return true;
+            comparisonResult = true;
+        } else if (normalizedTestPath.startsWith(normalizedAllowedPath)) {
+            const charAfterAllowedPath = normalizedTestPath[normalizedAllowedPath.length];
+            if (charAfterAllowedPath === '/' || charAfterAllowedPath === '\\') {
+                comparisonResult = true;
+            }
         }
-        // b. Starts with allowedPath + path separator
-        // path.sep should be '\\' after normalizeWindowsPath
-        if (normalizedTestPath.startsWith(normalizedAllowedPath + '\\')) {
-            return true;
+
+        if (IS_DEBUG_TARGET_ALLOWED_PATH && IS_DEBUG_TARGET_TEST_PATH && !comparisonResult) {
+            // This is the specific case Test 5.1 is hitting, and it's failing.
+            let detail = `DEBUG_INFO: Comparison FAILED for SpecificCase. TestPath="${normalizedTestPath}" (Len:${normalizedTestPath.length}). AllowedPath="${normalizedAllowedPath}" (Len:${normalizedAllowedPath.length}).`;
+            if (normalizedTestPath.startsWith(normalizedAllowedPath)) {
+                const char = normalizedTestPath[normalizedAllowedPath.length];
+                detail += ` StartsWith=true, CharAfter="${char}" (Code:${char?.charCodeAt(0)}). SeparatorCheckFailed.`;
+            } else {
+                detail += ` StartsWith=false.`;
+                for (let i = 0; i < Math.min(normalizedTestPath.length, normalizedAllowedPath.length); i++) {
+                    if (normalizedTestPath[i] !== normalizedAllowedPath[i]) {
+                        detail += ` MismatchIdx ${i}: TestChar="${normalizedTestPath[i]}"(${normalizedTestPath.charCodeAt(i)}), AllowedChar="${normalizedAllowedPath[i]}"(${normalizedAllowedPath.charCodeAt(i)})`;
+                        break;
+                    }
+                }
+            }
+            throw new Error(detail);
         }
+
+        if (comparisonResult) return true;
+
+        // Fallback for other paths, or if the debug case passed (which it shouldn't if test fails)
         return false;
     });
 }
@@ -178,6 +204,12 @@ export function validateWorkingDirectory(dir: string, allowedPaths: string[]): v
         throw new Error('Working directory must be an absolute path');
     }
 
+    // --- DEBUGGING FOR WSL Test 5.1 ---
+    // `dir` parameter to validateWorkingDirectory is already normalized by its caller (_executeTool)
+    // e.g., 'C:\mnt\c\tad\sub' (case might vary before toLowerCase)
+    const DEBUG_EXPECTED_DIR_INPUT = 'c:\\mnt\\c\\tad\\sub';
+    const IS_DEBUG_CASE_FOR_VALIDATEWORKDIR = dir.toLowerCase().replace(/[/\\]+$/, '') === DEBUG_EXPECTED_DIR_INPUT;
+
     if (!isPathAllowed(dir, allowedPaths)) {
         const allowedPathsStr = allowedPaths.join(', ');
         throw new Error(
@@ -187,7 +219,18 @@ export function validateWorkingDirectory(dir: string, allowedPaths: string[]): v
 }
 
 export function normalizeWindowsPath(inputPath: string): string {
-    let currentPath = inputPath; 
+    let currentPath = inputPath;
+
+    // --- NEW: WSL /mnt/x/foo to X:\foo handling ---
+    // This regex handles /mnt/c, /mnt/c/, /mnt/c/foo, /mnt/c/foo/
+    const wslMntMatch = currentPath.match(/^\/mnt\/([a-zA-Z])($|\/.*)/);
+    if (wslMntMatch) {
+        const driveLetter = wslMntMatch[1].toUpperCase();
+        // wslMntMatch[2] will be undefined for /mnt/c, empty string for /mnt/c/, or /rest/of/path for /mnt/c/rest/of/path
+        const restOfPath = wslMntMatch[2] ? wslMntMatch[2] : '';
+        currentPath = `${driveLetter}:${restOfPath}`; // Results in "C:/foo" or "C:" or "C:/"
+    }
+    // --- END NEW ---
 
     const hadTrailingSlash = /[/\\]$/.test(currentPath) && currentPath.length > 1;
 
@@ -212,8 +255,13 @@ export function normalizeWindowsPath(inputPath: string): string {
         if (/^[a-zA-Z]:(?![\\/])/.test(currentPath)) { 
             currentPath = `${currentPath.substring(0, 2)}\\${currentPath.substring(2)}`;
         } 
-        else if (!/^[a-zA-Z]:/.test(currentPath)) { 
-            currentPath = `C:\\${currentPath}`;
+        // This was the old logic that might have prepended C:\ to already drive-lettered paths if not careful.
+        // If currentPath is already "C:\foo" or "C:", this should not apply.
+        // If currentPath is "foo\bar" (relative), it should become "C:\foo\bar".
+        else if (!/^[a-zA-Z]:\\/.test(currentPath) && !currentPath.startsWith('\\')) { // if not X:\path and not \path
+             if (!/^[a-zA-Z]:/.test(currentPath)) { // And also not X:relative
+                 currentPath = `C:\\${currentPath}`;
+             }
         }
     }
     
