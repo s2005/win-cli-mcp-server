@@ -49,6 +49,13 @@ export const DEFAULT_CONFIG: ServerConfig = {
       args: ['-c'],
       validatePath: (dir: string) => dir.match(defaultValidatePathRegex) !== null,
       blockedOperators: ['&', '|', ';', '`']
+    },
+    wsl: {
+      enabled: true,
+      command: 'wsl.exe',
+      args: [],
+      validatePath: (dir: string) => dir.match(defaultValidatePathRegex) !== null,
+      blockedOperators: ['&', '|', ';', '`']
     }
   },
 };
@@ -112,6 +119,10 @@ function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<ServerCon
       gitbash: {
         ...defaultConfig.shells.gitbash,
         ...(userConfig.shells?.gitbash || {})
+      },
+      wsl: {
+        ...defaultConfig.shells.wsl,
+        ...(userConfig.shells?.wsl || {})
       }
     }
   };

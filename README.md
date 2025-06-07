@@ -4,7 +4,7 @@
 [![NPM Version](https://img.shields.io/npm/v/@simonb97/server-win-cli.svg?style=flat)](https://www.npmjs.com/package/@simonb97/server-win-cli?activeTab=versions)
 [![smithery badge](https://smithery.ai/badge/@simonb97/server-win-cli)](https://smithery.ai/server/@simonb97/server-win-cli)
 
-[MCP server](https://modelcontextprotocol.io/introduction) for secure command-line interactions on Windows systems, enabling controlled access to PowerShell, CMD, Git Bash shells.
+[MCP server](https://modelcontextprotocol.io/introduction) for secure command-line interactions on Windows systems, enabling controlled access to PowerShell, CMD, Git Bash and WSL shells.
 It allows MCP clients (like [Claude Desktop](https://claude.ai/download)) to perform operations on your system, similar to [Open Interpreter](https://github.com/OpenInterpreter/open-interpreter).
 
 >[!IMPORTANT]
@@ -35,7 +35,7 @@ It allows MCP clients (like [Claude Desktop](https://claude.ai/download)) to per
 
 ## Features
 
-- **Multi-Shell Support**: Execute commands in PowerShell, Command Prompt (CMD), and Git Bash
+- **Multi-Shell Support**: Execute commands in PowerShell, Command Prompt (CMD), Git Bash, or WSL
 - **Resource Exposure**: View current directory and configuration as MCP resources
 - **Security Controls**:
   - Command blocking (full paths, case variations)
@@ -173,6 +173,12 @@ If no configuration file is found, the server will use a default (restricted) co
       "command": "C:\\Program Files\\Git\\bin\\bash.exe",
       "args": ["-c"],
       "blockedOperators": ["&", "|", ";", "`"]
+    },
+    "wsl": {
+      "enabled": true,
+      "command": "wsl.exe",
+      "args": [],
+      "blockedOperators": ["&", "|", ";", "`"]
     }
   }
 }
@@ -264,6 +270,12 @@ The configuration file is divided into two main sections: `security` and `shells
       "command": "C:\\Program Files\\Git\\bin\\bash.exe",
       "args": ["-c"],
       "blockedOperators": ["&", "|", ";", "`"]  // Block all command chaining
+    },
+    "wsl": {
+      "enabled": true,
+      "command": "wsl.exe",
+      "args": [],
+      "blockedOperators": ["&", "|", ";", "`"]  // Block all command chaining
     }
   }
 }
@@ -292,7 +304,7 @@ You can execute a series of commands in one request by joining them with `&&`. T
 
   - Execute a command in the specified shell
   - Inputs:
-    - `shell` (string): Shell to use ("powershell", "cmd", or "gitbash")
+    - `shell` (string): Shell to use ("powershell", "cmd", "gitbash", or "wsl")
     - `command` (string): Command to execute
     - `workingDir` (optional string): Working directory
   - Returns command output as text, or error message if execution fails

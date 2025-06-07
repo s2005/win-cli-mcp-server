@@ -51,6 +51,12 @@ describe('get_config tool', () => {
         command: 'bash.exe',
         args: ['-c'],
         blockedOperators: ['&', '|']
+      },
+      wsl: {
+        enabled: true,
+        command: 'wsl.exe',
+        args: [],
+        blockedOperators: ['&', '|']
       }
     }
   };
@@ -81,11 +87,13 @@ describe('get_config tool', () => {
     
     expect(safeConfig.shells.cmd.enabled).toBe(testConfig.shells.cmd.enabled);
     expect(safeConfig.shells.gitbash.enabled).toBe(testConfig.shells.gitbash.enabled);
+    expect(safeConfig.shells.wsl.enabled).toBe(testConfig.shells.wsl.enabled);
     
     // Verify that function properties are not included in the serializable config
     expect(safeConfig.shells.powershell.validatePath).toBeUndefined();
     expect(safeConfig.shells.cmd.validatePath).toBeUndefined();
     expect(safeConfig.shells.gitbash.validatePath).toBeUndefined();
+    expect(safeConfig.shells.wsl.validatePath).toBeUndefined();
 
   });
 

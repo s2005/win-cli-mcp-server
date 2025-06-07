@@ -22,5 +22,6 @@ export interface ServerConfig {
     powershell: ShellConfig;
     cmd: ShellConfig;
     gitbash: ShellConfig;
+    wsl: ShellConfig;
   };
 }

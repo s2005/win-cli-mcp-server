@@ -5,7 +5,7 @@ describe('Tool Description Generation', () => {
   test('generates correct description with all shells enabled', () => {
     const allowedShells = ['powershell', 'cmd', 'gitbash'];
     const description = buildToolDescription(allowedShells);
-    
+
     // Check header
     expect(description[0]).toBe('Execute a command in the specified shell (powershell, cmd, gitbash)');
     
