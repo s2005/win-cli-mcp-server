@@ -102,3 +102,55 @@ The tests also cover the correct normalization and validation of WSL paths (e.g.
 - **should propagate shell process errors** – checks that errors emitted by the spawned process reject the command.
 - **should clear timeout when process exits normally** – confirms that the timeout is cleared and the process is not killed when it finishes before the limit.
 
+## tests/asyncOperations.test.ts
+
+- **should handle concurrent command executions** – runs multiple commands in parallel and verifies that each completes successfully.
+- **should queue commands when limit reached** – ensures additional commands wait when a concurrency limit is exceeded.
+- **should handle concurrent errors independently** – confirms that failures in one command do not affect others running at the same time.
+
+## tests/errorHandling.test.ts
+
+- **should handle malformed JSON-RPC requests** – invalid tool parameters result in an `InvalidParams` error.
+- **should recover from shell crashes** – spawning a nonexistent shell command triggers an `InternalError` with details from the spawn failure.
+- **should throw error on invalid configuration** – loading a config with invalid values raises an exception.
+- **should fall back to defaults when config read fails** – if reading the config file throws, defaults are returned and an error is logged.
+
+## tests/wsl/pathConversion.test.ts
+
+- **convertWindowsToWslPath handles standard and mixed separators** – converts typical Windows paths, forward slashes and mixed separators to `/mnt/<drive>/` form.
+- **handles drive roots and trailing slashes** – correctly processes paths like `C:/` and `C:\\Users\\`.
+- **supports custom mount points and paths with spaces** – allows overriding the mount root and preserves spaces during conversion.
+- **returns non-Windows paths unchanged and rejects UNC paths** – Unix-style or relative paths pass through while UNC paths throw an error.
+
+## tests/wsl/pathResolution.test.ts
+
+- **resolves allowed paths based on global and WSL-specific settings** – merges and converts Windows paths, respecting the `inheritGlobalPaths` flag.
+- **ensures unique results and warns about unsupported UNC paths** – duplicates are removed and a warning is logged when global paths cannot be converted.
+- **honors custom `wslMountPoint` values** – converted paths reflect the configured mount prefix.
+
+## tests/wsl/validateWslWorkingDirectory.test.ts
+
+- **accepts valid WSL directories from global or shell-specific lists** – directories under resolved allowed paths are permitted.
+- **rejects directories outside the allowed set or with invalid format** – errors are thrown for disallowed roots, relative paths or Windows-style paths.
+- **supports custom mount points and ignores unsupported global UNC paths** – validation uses the configured mount prefix and logs warnings for skipped UNC paths.
+
+## tests/wsl/validation.test.ts
+
+- **isWslPathAllowed matches paths correctly** – parameterized cases verify exact matches, subdirectories and disallowed variations.
+- **normalizes paths before comparison** – relative segments like `..` or `.` are resolved for accurate checks.
+
+## tests/integration/endToEnd.test.ts
+
+- **should execute shell command with proper isolation** – uses the helper server to run a command end‑to‑end and verifies the output and working directory metadata.
+
+## tests/integration/mcpProtocol.test.ts
+
+- **should return configuration via get_config tool** – parses the JSON response and ensures required keys are present.
+- **should validate directories correctly** – calling the directory validation tool succeeds for allowed paths.
+
+## tests/integration/shellExecution.test.ts
+
+- **should reject commands with blocked operators** – executing a command containing `;` results in an `McpError`.
+- **should enforce working directory restrictions** – commands fail when executed from disallowed directories.
+- **should execute when working directory allowed** – succeeds when the directory is permitted by the configuration.
+
