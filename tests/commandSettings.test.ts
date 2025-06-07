@@ -1,6 +1,6 @@
 import path from 'path';
 import { describe, expect, test, beforeAll, afterAll, jest } from '@jest/globals';
-import { CLIServer } from '../src/index.js';
+import { MockCLIServer } from './helpers/MockCLIServer.js';
 import { DEFAULT_CONFIG } from '../src/utils/config.js';
 
 jest.mock('@modelcontextprotocol/sdk/server/index.js', () => {
@@ -43,7 +43,7 @@ afterAll(() => {
 describe('validateCommand with different settings', () => {
   test('blocks dangerous operators when injection protection enabled', () => {
     const config = { ...baseConfig, security: { ...baseConfig.security, enableInjectionProtection: true } };
-    const server = new CLIServer(config);
+    const server = new MockCLIServer(config);
     const origAbs = path.isAbsolute;
     const origRes = path.resolve;
     (path as any).isAbsolute = (p: string) => /^([a-zA-Z]:\\|\\\\)/.test(p) || origAbs(p);
@@ -58,7 +58,7 @@ describe('validateCommand with different settings', () => {
 
   test('allows command chaining when injection protection disabled', () => {
     const config = { ...baseConfig, security: { ...baseConfig.security, enableInjectionProtection: false } };
-    const server = new CLIServer(config);
+    const server = new MockCLIServer(config);
     const origAbs = path.isAbsolute;
     const origRes = path.resolve;
     (path as any).isAbsolute = (p: string) => /^([a-zA-Z]:\\|\\\\)/.test(p) || origAbs(p);
@@ -72,7 +72,7 @@ describe('validateCommand with different settings', () => {
 
   test('allows changing directory outside allowed paths when restriction disabled', () => {
     const config = { ...baseConfig, security: { ...baseConfig.security, restrictWorkingDirectory: false } };
-    const server = new CLIServer(config);
+    const server = new MockCLIServer(config);
     const origAbs = path.isAbsolute;
     const origRes = path.resolve;
     (path as any).isAbsolute = (p: string) => /^([a-zA-Z]:\\|\\\\)/.test(p) || origAbs(p);
@@ -86,7 +86,7 @@ describe('validateCommand with different settings', () => {
 
   test('rejects changing directory outside allowed paths when restriction enabled', () => {
     const config = { ...baseConfig, security: { ...baseConfig.security, restrictWorkingDirectory: true } };
-    const server = new CLIServer(config);
+    const server = new MockCLIServer(config);
     const origAbs = path.isAbsolute;
     const origRes = path.resolve;
     (path as any).isAbsolute = (p: string) => /^([a-zA-Z]:\\|\\\\)/.test(p) || origAbs(p);
