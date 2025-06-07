@@ -44,7 +44,10 @@
       "enabled": true,
       "command": "wsl.exe",
       "args": ["-e"],
-      "blockedOperators": ["&", "|", ";", "`"]
+      "blockedOperators": ["&", "|", ";", "`"],
+      "allowedPaths": [],
+      "wslMountPoint": "/mnt/",
+      "inheritGlobalPaths": true
     }
   }
 }

@@ -14,6 +14,10 @@ export interface ShellConfig {
   args: string[];
   validatePath?: (dir: string) => boolean;
   blockedOperators?: string[]; // Added for shell-specific operator restrictions
+  // WSL specific options
+  allowedPaths?: string[];      // Allowed paths exclusively for this shell
+  wslMountPoint?: string;       // Windows drive mount point, default '/mnt/'
+  inheritGlobalPaths?: boolean; // Convert global allowedPaths to WSL format
 }
 
 export interface ServerConfig {

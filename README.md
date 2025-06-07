@@ -175,7 +175,7 @@ If no configuration file is found, the server will use a default (restricted) co
       "args": ["-c"],
       "blockedOperators": ["&", "|", ";", "`"]
     },
-    "wsl": {
+  "wsl": {
       "enabled": true,
       "command": "wsl.exe",
       "args": ["-e"],
@@ -184,6 +184,15 @@ If no configuration file is found, the server will use a default (restricted) co
   }
 }
 ```
+
+#### WSL-Specific Configuration
+
+The `wsl` shell accepts additional options:
+
+- `allowedPaths` – list of WSL paths allowed for command execution.
+- `wslMountPoint` – mount point used when converting Windows paths (defaults to `/mnt/`).
+- `inheritGlobalPaths` – when true (default) the global `allowedPaths` are converted to WSL format and used for validation.
+
 
 ### Configuration Settings
 
@@ -276,7 +285,10 @@ The configuration file is divided into two main sections: `security` and `shells
       "enabled": true,
       "command": "wsl.exe", // Command to invoke WSL
       "args": ["-e"],       // Arguments to pass to wsl.exe for command execution (e.g., '-e' to execute a command)
-      "blockedOperators": ["&", "|", ";", "`"] // Standard blocked operators
+      "blockedOperators": ["&", "|", ";", "`"], // Standard blocked operators
+      "allowedPaths": [],                // WSL specific allowed paths (optional)
+      "wslMountPoint": "/mnt/",        // Mount point for Windows drives
+      "inheritGlobalPaths": true        // Convert global allowedPaths to WSL format
     }
   }
 }

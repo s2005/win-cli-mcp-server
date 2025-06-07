@@ -21,7 +21,10 @@ export function createSerializableConfig(config: ServerConfig): any {
         enabled: shell.enabled,
         command: shell.command,
         args: [...shell.args],
-        blockedOperators: shell.blockedOperators ? [...shell.blockedOperators] : []
+        blockedOperators: shell.blockedOperators ? [...shell.blockedOperators] : [],
+        allowedPaths: shell.allowedPaths ? [...shell.allowedPaths] : undefined,
+        wslMountPoint: shell.wslMountPoint,
+        inheritGlobalPaths: shell.inheritGlobalPaths
       };
       return acc;
     }, {} as Record<string, any>)

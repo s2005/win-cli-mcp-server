@@ -56,7 +56,10 @@ export const DEFAULT_CONFIG: ServerConfig = {
         args: ['-e'],
         // Basic WSL path validation: starts with /mnt/<drive>/ or is a Linux-like absolute path.
         validatePath: (dir: string) => /^(\/mnt\/[a-zA-Z]\/|\/)/.test(dir),
-        blockedOperators: ['&', '|', ';', '`']
+        blockedOperators: ['&', '|', ';', '`'],
+        allowedPaths: [],
+        wslMountPoint: '/mnt/',
+        inheritGlobalPaths: true
     }
   },
 };
