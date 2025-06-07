@@ -51,7 +51,7 @@ describe('validateCommand with different settings', () => {
     expect(() => {
       const cmdConfig = (server as any).config.shells.cmd;
       (server as any).validateCommand(cmdConfig, `cd ${tempDir} && echo hi & echo there`, tempDir);
-    }).toThrow(/blocked operators/i);
+    }).toThrow("MCP error -32600: Command contains blocked operator: &");
     (path as any).isAbsolute = origAbs;
     (path as any).resolve = origRes;
   });
