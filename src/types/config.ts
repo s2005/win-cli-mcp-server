@@ -14,6 +14,9 @@ export interface ShellConfig {
   args: string[];
   validatePath?: (dir: string) => boolean;
   blockedOperators?: string[]; // Added for shell-specific operator restrictions
+  allowedPaths?: string[];
+  wslMountPoint?: string;
+  inheritGlobalPaths?: boolean;
 }
 
 export interface ServerConfig {
