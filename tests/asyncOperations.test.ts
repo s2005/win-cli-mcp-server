@@ -15,8 +15,8 @@ describe('Async Command Execution', () => {
     config = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
     config.shells.wsl = {
       enabled: true,
-      command: wslEmulatorPath,
-      args: ['-e'],
+      command: 'bash', // Use bash to execute the script
+      args: [wslEmulatorPath, '-e'], // Pass script path as first arg to bash
       validatePath: (dir: string) => /^(\/mnt\/[a-zA-Z]\/|\/)/.test(dir),
       blockedOperators: ['&', '|', ';', '`']
     };

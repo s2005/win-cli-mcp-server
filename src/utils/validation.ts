@@ -311,106 +311,99 @@ export function validateWorkingDirectory(dir: string, allowedPaths: string[]): v
 }
 
 export function normalizeWindowsPath(inputPath: string): string {
-    // Handle UNC paths first: \\server\share
-    if (inputPath.startsWith('\\\\')) {
-        // Normalize, but prevent converting forward slashes if any were used by mistake in a UNC path
-        let normalizedUnc = inputPath.replace(/\//g, '\\');
-        normalizedUnc = path.win32.normalize(normalizedUnc);
-        // path.win32.normalize might convert \\\\ to \\ if not careful, ensure it stays \\\\server
-        if (normalizedUnc.startsWith('\\') && !normalizedUnc.startsWith('\\\\')) {
-          // This can happen if path.win32.normalize "fixes" \\\\server to \server
-          // It's a bit of a dance, ensure it's a valid UNC start.
-          // A more robust UNC check might be needed if this isn't sufficient.
-           return '\\' + normalizedUnc; // Prepend backslash to make it \\server again
-        }
-        return normalizedUnc;
+    // TEMPORARILY simplified for diagnostics, with WSL path distinction
+    // console.log(`normalizeWindowsPath (simplified) INPUT: '${inputPath}'`);
+    if (typeof inputPath !== 'string' || !inputPath.trim()) {
+        // console.log(`normalizeWindowsPath (simplified) OUTPUT (empty for invalid): ''`);
+        return '';
     }
 
-    // Check for WSL paths and other POSIX-like absolute paths
-    if (inputPath.startsWith('/')) {
-        let normalizedPosixPath = path.posix.normalize(inputPath);
-        // Check for Git Bash style /c/foo paths specifically
-        const gitBashDriveMatch = normalizedPosixPath.match(/^\/([a-zA-Z])($|\/.*)/);
-        if (gitBashDriveMatch) {
-            const driveLetter = gitBashDriveMatch[1].toUpperCase();
-            const restOfPath = gitBashDriveMatch[2] || ''; // Ensure restOfPath is empty string if undefined
-            // Convert to Windows style: C:\rest\of\path
-            // Need to remove leading slash from restOfPath if it exists, as it's part of the Windows path
-            return `${driveLetter}:${restOfPath.startsWith('/') ? restOfPath : '\\' + restOfPath}`.replace(/\//g, '\\');
+    let tempPath = inputPath.trim();
+
+    // Priority 1: Git Bash paths like /c/foo -> C:\foo
+    const gitBashMatch = tempPath.match(/^\/([a-zA-Z])(\/.*)?$/);
+    if (gitBashMatch) {
+        const drive = gitBashMatch[1].toUpperCase();
+        const pathPart = gitBashMatch[2] || '';
+        tempPath = `${drive}:${pathPart.replace(/\//g, '\\')}`; // Convert slashes for path part
+        // Proceed to common Windows-specific normalizations below
+    }
+    // Priority 2: WSL-like paths (e.g. /mnt/..., /home/..., /tmp, /etc/...)
+    // These should retain forward slashes and are returned directly after basic forward-slash normalization.
+    else if (tempPath.startsWith('/')) {
+        const originalTrimmedPath = inputPath.trim();
+        const originalEndsWithSlash = originalTrimmedPath.endsWith('/') && originalTrimmedPath !== '/';
+        
+        // Normalize multiple consecutive forward slashes to one
+        tempPath = tempPath.replace(/\/\/+/g, '/');
+
+        if (tempPath !== '/') { // Don't modify the root path "/"
+            if (originalEndsWithSlash && !tempPath.endsWith('/')) {
+                // If original had a trailing slash (and wasn't just "/"), and normalization removed it, add it back.
+                tempPath += '/';
+            } else if (!originalEndsWithSlash && tempPath.endsWith('/')) {
+                // If original did not have a trailing slash, but normalization might have left one (e.g. from /foo// -> /foo/), remove it.
+                tempPath = tempPath.slice(0, -1);
+            }
         }
-        // For other POSIX paths like /home/user, /mnt/c/foo, /usr/bin, return as is (normalized)
-        return normalizedPosixPath;
+        // console.log(`normalizeWindowsPath (simplified) OUTPUT (WSL branch): '${tempPath}'`);
+        return tempPath; // Return early, no further Windows normalization for WSL paths
+    }
+    // Priority 3: Other paths (assumed Windows or relative paths for Windows context)
+    else {
+        // Convert any forward slashes to backslashes for Windows paths
+        tempPath = tempPath.replace(/\//g, '\\');
     }
 
-    let currentPath = inputPath;
+    // --- Windows Path Resolution and Normalization ---
+    // At this point, tempPath is a Windows-style path string (e.g., "C:\\foo", "foo\\bar", "C:bar", "\\\\server\\share")
+    // It might be absolute or relative. Slashes are backslashes.
 
-    // The OLD WSL /mnt/x/foo to X:\foo handling block has been removed.
+    let resolvedPath: string;
+    if (tempPath.startsWith('\\\\')) { // UNC Path
+        resolvedPath = path.win32.normalize(tempPath);
+    } else {
+        const driveLetterOnly = tempPath.match(/^([a-zA-Z]):$/); // e.g. "C:"
+        const driveLetterRelative = tempPath.match(/^([a-zA-Z]):(?![\\\/])(.*)$/); // e.g. C:foo
+        const startsWithDrive = /^[a-zA-Z]:/.test(tempPath); // Does it start with C: or c: etc.
 
-    const hadTrailingSlash = /[/\\]$/.test(currentPath) && currentPath.length > 1;
-
-    currentPath = currentPath.replace(/\//g, '\\'); // Convert all / to \ for Windows processing
-
-    // The Git Bash style /c/foo conversion is now handled by the block: if (inputPath.startsWith('/'))
-    // No need for the old `gitbashMatch` here for that specific case.
-    // However, if a path like `\c\foo` (starting with backslash) was intended to be caught,
-    // that is a different scenario. The `gitbashMatch` below implies it was for paths already processed to use `\`.
-    // Given the new upfront handling of `/` prefixed paths, this specific regex might be redundant or for edge cases.
-
-    // This regex was for paths like `\c\foo` that might have resulted after initial conversion of `/` to `\`
-    // It's less likely to be hit for `/c/foo` style inputs now.
-    const gitbashDriveMatchAfterSlashConversion = currentPath.match(/^\\([a-zA-Z])($|\\.*)/);
-    if (gitbashDriveMatchAfterSlashConversion) {
-        currentPath = `${gitbashDriveMatchAfterSlashConversion[1].toUpperCase()}:${gitbashDriveMatchAfterSlashConversion[2] || ''}`;
-    }
-    // Removed `else if (currentPath.startsWith('\\'))` for UNC as it's handled upfront.
-    // This handles paths like `\Users\test` (not `\\server\share` or `\c\foo`)
-    else if (currentPath.startsWith('\\') && !currentPath.startsWith('\\\\')) {
-        // This case was for paths like \Users\test (interpreted as C:\Users\test)
-        const hasDriveLetterAfterInitialSlash = /^[a-zA-Z]:/.test(currentPath.substring(1));
-        if (hasDriveLetterAfterInitialSlash) {
-            currentPath = currentPath.substring(1);
-        } else {
-            currentPath = `C:\\${currentPath.substring(1)}`;
+        if (path.win32.isAbsolute(tempPath)) {
+            if (startsWithDrive) { // e.g. "C:\\foo"
+                resolvedPath = path.win32.normalize(tempPath);
+            } else { // Absolute but no drive, e.g. "\\foo\\bar". Tests expect C-rooting.
+                resolvedPath = path.win32.resolve('C:\\', tempPath);
+            }
+        } else if (driveLetterOnly) { // "C:"
+            resolvedPath = driveLetterOnly[1].toUpperCase() + ':\\';
+        } else if (driveLetterRelative) { // "C:foo"
+            resolvedPath = path.win32.normalize(driveLetterRelative[1].toUpperCase() + ':\\' + driveLetterRelative[2]);
+        } else { // Truly relative path like "foo\\bar" or "..\\foo"
+            // Tests expect these to be C-rooted.
+            resolvedPath = path.win32.resolve('C:\\', tempPath);
         }
     }
-    else { 
-        if (/^[a-zA-Z]:(?![\\/])/.test(currentPath)) { 
-            currentPath = `${currentPath.substring(0, 2)}\\${currentPath.substring(2)}`;
-        } 
-        // This was the old logic that might have prepended C:\ to already drive-lettered paths if not careful.
-        // If currentPath is already "C:\foo" or "C:", this should not apply.
-        // If currentPath is "foo\bar" (relative), it should become "C:\foo\bar".
-        else if (!/^[a-zA-Z]:\\/.test(currentPath) && !currentPath.startsWith('\\')) { // if not X:\path and not \path
-             if (!/^[a-zA-Z]:/.test(currentPath)) { // And also not X:relative
-                 currentPath = `C:\\${currentPath}`;
-             }
-        }
+
+    // Uppercase drive letter if present
+    const finalDriveMatch = resolvedPath.match(/^([a-zA-Z]):(.*)$/);
+    if (finalDriveMatch) {
+        resolvedPath = finalDriveMatch[1].toUpperCase() + ':' + finalDriveMatch[2];
     }
     
-    let finalPath = path.win32.normalize(currentPath);
+    // Final trailing slash adjustment
+    if (resolvedPath.endsWith('\\')) {
+        const isDriveRoot = /^[a-zA-Z]:\\$/.test(resolvedPath); // C:\\
+        const isUNCShareRootOnly = /^\\\\[^\\\\]+\\[^\\\\]+$/.test(resolvedPath); // \\\\server\\share
 
-    const driveLetterMatchCleanup = finalPath.match(/^([a-z]):(.*)/);
-    if (driveLetterMatchCleanup) {
-        finalPath = `${driveLetterMatchCleanup[1].toUpperCase()}:${driveLetterMatchCleanup[2]}`;
+        if (!isDriveRoot && !isUNCShareRootOnly) { 
+             resolvedPath = resolvedPath.slice(0, -1);
+        }
     }
-
-    finalPath = finalPath.replace(/\\+/g, '\\');
-    
-    if (finalPath.match(/^[a-zA-Z]:$/)) {
-        finalPath += '\\';
-    }
-
-    if (hadTrailingSlash && !finalPath.endsWith('\\')) {
-        finalPath += '\\';
-    } else if (!hadTrailingSlash && finalPath.endsWith('\\') && finalPath.length > 3) { 
-        finalPath = finalPath.replace(/\\$/, ''); 
-    }
-
-    return finalPath;
+    return resolvedPath;
 }
 
 export function normalizeAllowedPaths(paths: string[]): string[] {
     // Step 1: Initial Normalization
+    // For each path, normalize it with its own fresh history for normalizeWindowsPath
     const normalizedInputPaths = paths.map(p => normalizeWindowsPath(p).toLowerCase());
 
     // Step 2: Processing and Filtering

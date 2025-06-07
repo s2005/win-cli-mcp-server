@@ -9,8 +9,8 @@ export function mockWindowsPaths(): void {
   const origRes = path.resolve;
 
   beforeEach(() => {
-    (path as any).isAbsolute = (p: string) => /^([a-zA-Z]:\\|\\\\)/.test(p) || origAbs(p);
-    (path as any).resolve = (...segments: string[]) => path.win32.resolve(...segments);
+    (path as any).isAbsolute = (p: string) => /^([a-zA-Z]:\\|\\\\|\/)/.test(p) || origAbs(p);
+    // path.resolve will now use its native behavior
   });
 
   afterEach(() => {

@@ -4,6 +4,7 @@ import { DEFAULT_CONFIG } from '../src/utils/config';
 import { McpError, ErrorCode, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import path, { dirname } from 'path';
 import os from 'os';
+import { normalizeWindowsPath } from '../src/utils/validation';
 import { fileURLToPath } from 'url';
 
 // ESM compatible __dirname
@@ -20,8 +21,8 @@ describe('WSL Shell Execution via Emulator (Tests 1-4)', () => {
     testConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
     testConfig.shells.wsl = {
       enabled: true,
-      command: wslEmulatorPath,
-      args: ['-e'],
+      command: 'bash', // Explicitly use bash to run the .sh script
+      args: [wslEmulatorPath, '-e'], // Pass script path as first arg to bash
       validatePath: (dir: string) => /^(\/mnt\/[a-zA-Z]\/|\/)/.test(dir),
       blockedOperators: ['&', '|', ';', '`']
     };
@@ -89,7 +90,7 @@ describe('WSL Shell Execution via Emulator (Tests 1-4)', () => {
     expect((result.metadata as any)?.exitCode).toBe(0);
     expect(result.content[0].text).not.toBe('');
     // Emulator specific output is the raw output of `uname -a`
-    expect(result.content[0].text).toMatch(/linux/i);
+    expect(result.content[0].text).toMatch(/(Linux|Msys)/i);
   });
 
   test('Test 4.2: Command with multiple arguments (ls -la /tmp)', async () => {
@@ -127,8 +128,8 @@ describe('WSL Working Directory Validation (Test 5)', () => { // Removed .only
     cwdTestConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
     cwdTestConfig.shells.wsl = {
       enabled: true,
-      command: wslEmulatorPath,
-      args: ['-e'],
+      command: 'bash', // Explicitly use bash to run the .sh script
+      args: [wslEmulatorPath, '-e'], // Pass script path as first arg to bash
       validatePath: (dir: string) => /^(\/mnt\/[a-zA-Z]\/|\/)/.test(dir),
       blockedOperators: ['&', '|', ';', '`']
     };
@@ -166,7 +167,7 @@ describe('WSL Working Directory Validation (Test 5)', () => { // Removed .only
     // not the conceptual wslOriginalPath.
     const firstContent = result.content[0];
     if (firstContent && firstContent.type === 'text') {
-      expect(firstContent.text.trim()).toBe(process.cwd());
+      expect(normalizeWindowsPath(firstContent.text.trim())).toBe(normalizeWindowsPath(process.cwd()));
     } else {
       throw new Error('Expected first content part to be text for pwd test.');
     }

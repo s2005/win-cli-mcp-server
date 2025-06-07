@@ -16,18 +16,23 @@ describe('Error Handling', () => {
   });
 
   test('should recover from shell crashes', async () => {
-    const server = new CLIServer(DEFAULT_CONFIG);
-    await expect(
-      server._executeTool({
+    const crashConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+    crashConfig.shells.cmd.command = 'nonexistent_shell_command_for_testing'; // Intentionally cause a spawn error
+    const server = new CLIServer(crashConfig);
+    try {
+      await server._executeTool({
         name: 'execute_command',
-        arguments: { shell: 'cmd', command: 'echo hi' }
-      })
-    ).rejects.toEqual(
-      expect.objectContaining({
-        code: ErrorCode.InternalError,
-        message: expect.stringContaining('Shell process error')
-      })
-    );
+        arguments: { shell: 'cmd', command: 'echo hi' } // Command itself doesn't matter, shell will fail to start
+      });
+      // If it reaches here, the promise didn't reject, which is an error for this test case
+      throw new Error('Test failed: Promise should have rejected due to shell crash.');
+    } catch (error: any) {
+      expect(error.code).toBe(ErrorCode.InternalError);
+      expect(error.message).toContain('Shell process error');
+      // Check for parts of the underlying spawn error message
+      expect(error.message).toContain('nonexistent_shell_command_for_testing');
+      expect(error.message).toMatch(/ENOENT|UNKNOWN/); // Accommodate different spawn error messages like UNKNOWN or ENOENT
+    }
   });
 
   test('should throw error on invalid configuration', () => {

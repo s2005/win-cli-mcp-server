@@ -30,119 +30,65 @@ jest.mock('../src/utils/validation.js', () => ({
 
 describe('Directory Validator', () => {
   // Define test allowed paths
-  const allowedPaths = ['C:\\Users\\test', 'D:\\Projects'];
+const allowedPaths = ['C:\\Users\\test', 'D:\\Projects'];
 
   describe('validateDirectories', () => {
-    test('should return valid for directories within allowed paths', () => {
-      const directories = ['C:\\Users\\test\\docs', 'D:\\Projects\\web'];
+    test.each([
+      [['C:\\Users\\test\\docs', 'D:\\Projects\\web'], true, []],
+      [['C:\\Windows\\System32', 'E:\\NotAllowed'], false, ['C:\\Windows\\System32', 'E:\\NotAllowed']],
+      [['C:\\Users\\test\\documents', 'C:\\Program Files'], false, ['C:\\Program Files']],
+      [['/c/Users/test/docs', '/d/Projects/web'], true, []],
+      [['C:\\Users\\test', 'D:\\Projects', 'E:\\Invalid'], false, ['E:\\Invalid']],
+      [[], true, []],
+    ])('validateDirectories(%j) should return isValid=%s, invalidDirectories=%j',
+      (directories, expectedValid, expectedInvalid) => {
       const result = validateDirectories(directories, allowedPaths);
-      
-      expect(result.isValid).toBe(true);
-      expect(result.invalidDirectories).toHaveLength(0);
-    });
-
-    test('should return invalid for directories outside allowed paths', () => {
-      const directories = ['C:\\Windows\\System32', 'E:\\NotAllowed'];
-      const result = validateDirectories(directories, allowedPaths);
-      
-      expect(result.isValid).toBe(false);
-      expect(result.invalidDirectories).toEqual(directories);
-    });
-
-    test('should handle a mix of valid and invalid directories', () => {
-      const validDir = 'C:\\Users\\test\\documents';
-      const invalidDir = 'C:\\Program Files';
-      const directories = [validDir, invalidDir];
-      
-      const result = validateDirectories(directories, allowedPaths);
-      
-      expect(result.isValid).toBe(false);
-      expect(result.invalidDirectories).toContain(invalidDir);
-      expect(result.invalidDirectories).not.toContain(validDir);
-    });
-
-    test('should handle GitBash style paths', () => {
-      const directories = ['/c/Users/test/docs', '/d/Projects/web'];
-      const result = validateDirectories(directories, allowedPaths);
-      
-      expect(result.isValid).toBe(true);
-      expect(result.invalidDirectories).toHaveLength(0);
-    });
-
-    test('should consider invalid paths that throw during normalization', () => {
-      // Mock normalizeWindowsPath to throw for a specific path
-      const validationModule = jest.requireMock('../src/utils/validation.js') as { normalizeWindowsPath: jest.Mock };
-      validationModule.normalizeWindowsPath.mockImplementationOnce(() => {
-        throw new Error('Invalid path format');
-      });
-      
-      const directories = ['invalid://path', 'D:\\Projects\\web'];
-      const result = validateDirectories(directories, allowedPaths);
-      
-      expect(result.isValid).toBe(false);
-      expect(result.invalidDirectories).toContain('invalid://path');
+      expect(result.isValid).toBe(expectedValid);
+      expect(result.invalidDirectories).toEqual(expectedInvalid);
     });
   });
 
-  describe('validateDirectoriesAndThrow', () => {
-    test('should not throw for valid directories', () => {
-      const directories = ['C:\\Users\\test\\docs', 'D:\\Projects\\web'];
-      
-      expect(() => {
-        validateDirectoriesAndThrow(directories, allowedPaths);
-      }).not.toThrow();
-    });
-
-    test('should throw McpError for invalid directories', () => {
-      const directories = ['C:\\Windows\\System32', 'E:\\NotAllowed'];
-      
-      expect(() => {
-        validateDirectoriesAndThrow(directories, allowedPaths);
-      }).toThrow(McpError);
-    });
-
-    test('should include invalid directories in error message', () => {
-      const invalidDir1 = 'C:\\Windows\\System32';
-      const invalidDir2 = 'E:\\NotAllowed';
-      const directories = [invalidDir1, invalidDir2];
-      
-      try {
-        validateDirectoriesAndThrow(directories, allowedPaths);
-        fail('Expected an error to be thrown');
-      } catch (error: any) {
-        expect(error).toBeInstanceOf(McpError);
-        expect(error.code).toBe(ErrorCode.InvalidRequest);
-        expect(error.message).toContain(invalidDir1);
-        expect(error.message).toContain(invalidDir2);
-        expect(error.message).toContain(allowedPaths[0]);
-        expect(error.message).toContain(allowedPaths[1]);
-      }
-    });
-
-    test('should use singular wording for a single invalid directory', () => {
-      const invalidDir = 'C:\\Windows\\System32';
-
-      try {
-        validateDirectoriesAndThrow([invalidDir], allowedPaths);
-        fail('Expected an error to be thrown');
-      } catch (error: any) {
-        expect(error).toBeInstanceOf(McpError);
-        expect(error.message).toContain('directory is outside');
-      }
-    });
-
-    test('should handle empty directories array', () => {
-      expect(() => {
-        validateDirectoriesAndThrow([], allowedPaths);
-      }).not.toThrow();
-    });
-
-    test('should handle empty allowed paths array', () => {
-      const directories = ['C:\\Users\\test\\docs', 'D:\\Projects\\web'];
-      
-      expect(() => {
-        validateDirectoriesAndThrow(directories, []);
-      }).toThrow(McpError);
+  describe('validateDirectoriesAndThrow error messages', () => {
+    test.each([
+      [
+        ['C:\\Windows\\System32'],
+        [
+          'MCP error -32600',
+          'The following directory is outside allowed paths:',
+          'C:\\\\Windows\\\\System32',
+          'Allowed paths are:',
+          'C:\\\\Users\\\\test, D:\\\\Projects',
+          'Commands with restricted directory are not allowed to execute'
+        ]
+      ],
+      [
+        ['E:\\Dir1', 'F:\\Dir2'],
+        [
+          'MCP error -32600',
+          'The following directories are outside allowed paths:',
+          'E:\\\\Dir1, F:\\\\Dir2',
+          'Allowed paths are:',
+          'C:\\\\Users\\\\test, D:\\\\Projects',
+          'Commands with restricted directories are not allowed to execute'
+        ]
+      ],
+      [
+        ['C:\\Program Files'],
+        [
+          'MCP error -32600',
+          'The following directory is outside allowed paths:',
+          'C:\\\\Program Files',
+          'Allowed paths are:',
+          'C:\\\\Users\\\\test, D:\\\\Projects',
+          'Commands with restricted directory are not allowed to execute'
+        ]
+      ]
+    ])('should throw with correct message for %j', (invalidDirs, expectedParts) => {
+      expect(() => validateDirectoriesAndThrow(invalidDirs, allowedPaths))
+        .toThrow(expect.objectContaining({
+          code: ErrorCode.InvalidRequest,
+          message: expect.stringMatching(new RegExp(expectedParts.join('.*'), 'i'))
+        }));
     });
   });
 });

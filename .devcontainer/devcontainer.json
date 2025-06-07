@@ -18,6 +18,10 @@
       ]
     }
   },
-  "postCreateCommand": "npm install",
-  "remoteUser": "node"
+  "postCreateCommand": "npm install --no-optional",
+  "remoteUser": "root",
+  "containerEnv": {
+    "npm_config_cache": "/tmp/.npm",
+    "npm_config_unsafe_perm": "true"
+  }
 }

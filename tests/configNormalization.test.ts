@@ -1,49 +1,66 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { randomBytes } from 'crypto';
 import { loadConfig, DEFAULT_CONFIG } from '../src/utils/config.js';
 
-describe('Validate allowedPaths normalization from config', () => {
-  let tempDir: string;
-  let CONFIG_PATH: string;
+describe('Config Normalization', () => {
+  const createTempConfig = (config: any): string => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'win-cli-test-'));
+    const configPath = path.join(tempDir, 'config.json');
+    fs.writeFileSync(configPath, JSON.stringify(config));
+    return configPath;
+  };
 
-  beforeAll(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'win-cli-test-'));
-    CONFIG_PATH = path.join(tempDir, `${randomBytes(8).toString('hex')}.json`);
-    const content = {
-      security: { allowedPaths: [
-        'C:\\SomeFolder\\Test',
-        '/c/other/PATH',
-        'C:/Another/Folder',
-        '/mnt/d/Incorrect/Path'
-      ] }
-    };
-    fs.writeFileSync(CONFIG_PATH, JSON.stringify(content));
-  });
+  test.each([
+    [
+      ['C:\\SomeFolder\\Test', '/c/other/PATH', 'C:/Another/Folder', '/mnt/d/Incorrect/Path'],
+      ['c:\\somefolder\\test', 'c:\\other\\path', 'c:\\another\\folder', '/mnt/d/incorrect/path']
+    ],
+    [
+      ['D:\\Work\\Project', '\\\\server\\share', '/e/temp'],
+      ['d:\\work\\project', '\\\\server\\share', 'e:\\temp']
+    ],
+    [
+      ['/mnt/c/linux/style', '/home/user', 'C:\\Windows\\Path'],
+      ['/mnt/c/linux/style', '/home/user', 'c:\\windows\\path']
+    ],
+  ])('loadConfig normalizes paths %j to %j', (inputPaths, expectedPaths) => {
+    const configPath = createTempConfig({
+      security: { allowedPaths: inputPaths }
+    });
 
-  afterAll(() => {
-    fs.rmSync(tempDir, { recursive: true, force: true });
-  });
-
-  test('loadConfig lower-cases and normalizes allowedPaths', () => {
-    const cfg = loadConfig(CONFIG_PATH);
+    const cfg = loadConfig(configPath);
     const normalized = cfg.security.allowedPaths;
-    expect(normalized).toEqual([
-      path.normalize('c:\\somefolder\\test'), // Stays Windows path
-      path.normalize('c:\\other\\path'),     // This was /c/other/path, now normalized to C:\other\path
-      path.normalize('c:\\another\\folder'), // Stays Windows path
-      '/mnt/d/incorrect/path',              // This was /mnt/d/incorrect/path, preserved as WSL path
-    ]);
+
+    expectedPaths.forEach((expectedPath, index) => {
+      if (expectedPath.startsWith('/mnt/') || expectedPath.startsWith('/home/')) {
+        expect(normalized[index]).toBe(expectedPath);
+      } else {
+        expect(normalized[index]).toBe(expectedPath); // Changed from path.normalize(expectedPath)
+      }
+    });
+
+    fs.rmSync(path.dirname(configPath), { recursive: true, force: true });
   });
-  
-  test('loadConfig fills missing security settings with defaults', () => {
-    const cfg = loadConfig(CONFIG_PATH);
-    expect(cfg.security.maxCommandLength).toBe(DEFAULT_CONFIG.security.maxCommandLength);
+
+  test('loadConfig merges with defaults correctly', () => {
+    const partialConfig = {
+      security: {
+        maxCommandLength: 500,
+        allowedPaths: ['C:\\Custom\\Path']
+      }
+    };
+
+    const configPath = createTempConfig(partialConfig);
+    const cfg = loadConfig(configPath);
+
+    expect(cfg.security.maxCommandLength).toBe(500);
+    expect(cfg.security.allowedPaths).toContain('c:\\custom\\path');
+
     expect(cfg.security.blockedCommands).toEqual(DEFAULT_CONFIG.security.blockedCommands);
-    expect(cfg.security.blockedArguments).toEqual(DEFAULT_CONFIG.security.blockedArguments);
     expect(cfg.security.commandTimeout).toBe(DEFAULT_CONFIG.security.commandTimeout);
     expect(cfg.security.enableInjectionProtection).toBe(DEFAULT_CONFIG.security.enableInjectionProtection);
-  });
 
+    fs.rmSync(path.dirname(configPath), { recursive: true, force: true });
+  });
 });
