@@ -1,5 +1,5 @@
 {
-  "name": "Node.js & TypeScript Dev Container",
+  "name": "win-cli-mcp-tests",
   "build": {
     "dockerfile": "../Dockerfile",
     "target": "build"
@@ -18,7 +18,7 @@
       ]
     }
   },
-  "postCreateCommand": "npm install --no-optional",
+  "postCreateCommand": "npm install --no-optional && npm run test",
   "remoteUser": "root",
   "containerEnv": {
     "npm_config_cache": "/tmp/.npm",
