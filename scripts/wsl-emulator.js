@@ -4,6 +4,8 @@
 // Mimics basic wsl.exe behavior for development and testing
 
 import { spawnSync } from 'child_process';
+import path from 'path';
+import fs from 'fs';
 
 const args = process.argv.slice(2);
 
@@ -27,22 +29,56 @@ if (args[0] === '-e') {
   const command = args[1];
   const commandArgs = args.slice(2);
 
-  // Special handling for test commands
-  if (command === 'exit' && commandArgs.length === 1) {
-    const exitCode = parseInt(commandArgs[0], 10);
-    if (!isNaN(exitCode)) {
-      process.exit(exitCode);
-    }
+  // Special handling for common test commands
+  switch (command) {
+    case 'pwd':
+      console.log(process.cwd());
+      process.exit(0);
+      break;
+    case 'exit':
+      if (commandArgs.length === 1) {
+        const exitCode = parseInt(commandArgs[0], 10);
+        if (!isNaN(exitCode)) {
+          process.exit(exitCode);
+        }
+      }
+      process.exit(0);
+      break;
+    case 'ls':
+      if (commandArgs.includes('/tmp')) {
+        console.log('total 0');
+        console.log('drwxrwxrwt  2 root root  40 Jan  1 00:00 .');
+        console.log('drwxr-xr-x 20 root root 480 Jan  1 00:00 ..');
+        process.exit(0);
+      } else if (commandArgs.includes('/mnt/c')) {
+        console.error(`ls: cannot access '${commandArgs.join(' ')}': No such file or directory`);
+        process.exit(2);
+      }
+      break;
+    case 'echo':
+      console.log(commandArgs.join(' '));
+      process.exit(0);
+      break;
+    case 'uname':
+      if (commandArgs.includes('-a')) {
+        console.log('Linux Ubuntu-Test 5.10.0-0-generic #0-Ubuntu SMP x86_64 GNU/Linux');
+        process.exit(0);
+      }
+      break;
   }
 
-  // Execute the command
-  const result = spawnSync(command, commandArgs, {
-    stdio: 'inherit',
-    shell: true,
-    env: { ...process.env, WSL_DISTRO_NAME: 'Ubuntu-Test' }
-  });
-
-  process.exit(result.status || 0);
+  // For other commands, try to execute them
+  try {
+    const result = spawnSync(command, commandArgs, {
+      stdio: 'inherit',
+      shell: true,
+      env: { ...process.env, WSL_DISTRO_NAME: 'Ubuntu-Test' }
+    });
+    process.exit(result.status || 0);
+  } catch (error) {
+    console.error(`Command execution failed: ${error.message}`);
+    process.exit(127);
+  }
 }
 
 // If no recognized command, show error

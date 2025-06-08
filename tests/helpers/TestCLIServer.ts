@@ -14,23 +14,29 @@ export class TestCLIServer {
     const wslShell = {
       ...DEFAULT_WSL_CONFIG,
       command: 'node',
-      args: [wslEmulatorPath, '-e']
+      args: [wslEmulatorPath, '-e'],
+      validatePath: (dir: string) => /^(\/mnt\/[a-zA-Z]\/|\/)/.test(dir),
+      blockedOperators: ['&', '|', ';', '`']
     };
     baseConfig.shells = { ...baseConfig.shells, wsl: wslShell };
 
     // Disable other shells by default for cross platform reliability
-    baseConfig.shells.powershell.enabled = false;
-    baseConfig.shells.cmd.enabled = false;
-    baseConfig.shells.gitbash.enabled = false;
+    if (baseConfig.shells.powershell) baseConfig.shells.powershell.enabled = false;
+    if (baseConfig.shells.cmd) baseConfig.shells.cmd.enabled = false;
+    if (baseConfig.shells.gitbash) baseConfig.shells.gitbash.enabled = false;
 
     // Allow -e argument for the emulator
     baseConfig.security.blockedArguments = baseConfig.security.blockedArguments.filter(a => a !== '-e');
 
-    // Merge overrides
+    // Merge overrides deeply
     const config: ServerConfig = {
       ...baseConfig,
       security: { ...baseConfig.security, ...(overrides.security || {}) },
-      shells: { ...baseConfig.shells, ...(overrides.shells || {}) }
+      shells: {
+        ...baseConfig.shells,
+        ...(overrides.shells || {}),
+        wsl: overrides.shells?.wsl ? { ...wslShell, ...overrides.shells.wsl } : wslShell
+      }
     } as ServerConfig;
 
     this.server = new CLIServer(config);
