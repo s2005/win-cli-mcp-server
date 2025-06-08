@@ -90,5 +90,24 @@ const allowedPaths = ['C:\\Users\\test', 'D:\\Projects'];
           message: expect.stringMatching(new RegExp(expectedParts.join('.*'), 'i'))
         }));
     });
+
+    test('error message has correct structure and includes all information', () => {
+      const invalidDirs = ['C\\Invalid\\Path'];
+      const allowed = ['C\\Allowed\\Path1', 'D\\Allowed\\Path2'];
+
+      try {
+        validateDirectoriesAndThrow(invalidDirs, allowed);
+        fail('Should have thrown an error');
+      } catch (error) {
+        expect(error).toBeInstanceOf(McpError);
+        expect(error.code).toBe(ErrorCode.InvalidRequest);
+        expect(error.message).toContain('MCP error -32600');
+        expect(error.message).toContain('The following directory is outside allowed paths:');
+        expect(error.message).toContain('C\\Invalid\\Path');
+        expect(error.message).toContain('Allowed paths are:');
+        expect(error.message).toContain('C\\Allowed\\Path1, D\\Allowed\\Path2');
+        expect(error.message).toContain('Commands with restricted directory are not allowed to execute');
+      }
+    });
   });
 });
