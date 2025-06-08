@@ -116,6 +116,20 @@ describe('get_config tool', () => {
     });
 
   });
+
+  test('createSerializableConfig handles empty shells config', () => {
+    const testConfigMinimal: ServerConfig = {
+      security: { ...testConfig.security },
+      shells: {}
+    };
+
+    const safeConfig = createSerializableConfig(testConfigMinimal);
+
+    expect(safeConfig).toBeDefined();
+    expect(safeConfig.security).toBeDefined();
+    expect(safeConfig.shells).toBeDefined();
+    expect(Object.keys(safeConfig.shells)).toHaveLength(0);
+  });
   
   test('get_config tool response format', () => {
     // Call the utility function directly with our test config

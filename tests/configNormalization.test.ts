@@ -63,4 +63,56 @@ describe('Config Normalization', () => {
 
     fs.rmSync(path.dirname(configPath), { recursive: true, force: true });
   });
+
+  test('minimal config only includes specified shells', () => {
+    const partialConfig = {
+      shells: {
+        gitbash: {
+          enabled: true,
+          command: "C:\\Program Files\\Git\\usr\\bin\\bash.exe"
+        }
+      }
+    };
+
+    const configPath = createTempConfig(partialConfig);
+    const cfg = loadConfig(configPath);
+
+    expect(cfg.shells).toHaveProperty('gitbash');
+    expect(cfg.shells).not.toHaveProperty('powershell');
+    expect(cfg.shells).not.toHaveProperty('cmd');
+    expect(cfg.shells).not.toHaveProperty('wsl');
+
+    fs.rmSync(path.dirname(configPath), { recursive: true, force: true });
+  });
+
+  test('empty shells config results in no shells', () => {
+    const configPath = createTempConfig({
+      security: { allowedPaths: ['C\\test'] }
+    });
+
+    const cfg = loadConfig(configPath);
+
+    expect(Object.keys(cfg.shells)).toHaveLength(0);
+
+    fs.rmSync(path.dirname(configPath), { recursive: true, force: true });
+  });
+
+  test('multiple shells config includes only specified shells', () => {
+    const partialConfig = {
+      shells: {
+        powershell: { enabled: false },
+        cmd: { enabled: true }
+      }
+    };
+
+    const configPath = createTempConfig(partialConfig);
+    const cfg = loadConfig(configPath);
+
+    expect(cfg.shells).toHaveProperty('powershell');
+    expect(cfg.shells).toHaveProperty('cmd');
+    expect(cfg.shells).not.toHaveProperty('gitbash');
+    expect(cfg.shells).not.toHaveProperty('wsl');
+
+    fs.rmSync(path.dirname(configPath), { recursive: true, force: true });
+  });
 });

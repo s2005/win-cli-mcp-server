@@ -24,9 +24,9 @@ export interface ShellConfig {
 export interface ServerConfig {
   security: SecurityConfig;
   shells: {
-    powershell: ShellConfig;
-    cmd: ShellConfig;
-    gitbash: ShellConfig;
+    powershell?: ShellConfig;
+    cmd?: ShellConfig;
+    gitbash?: ShellConfig;
     wsl?: ShellConfig;
   };
 }

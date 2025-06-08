@@ -133,40 +133,57 @@ function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<ServerCon
       ...defaultConfig.security,
       ...(userConfig.security || {})
     },
-    shells: {
-      // Merge each shell config individually so unspecified options fall back to defaults
-      powershell: {
-        ...defaultConfig.shells.powershell,
-        ...(userConfig.shells?.powershell || {})
-      },
-      cmd: {
-        ...defaultConfig.shells.cmd,
-        ...(userConfig.shells?.cmd || {})
-      },
-      gitbash: {
-        ...defaultConfig.shells.gitbash,
-        ...(userConfig.shells?.gitbash || {})
-      }
-    }
+    shells: {}
   };
 
+  // Determine which shells should be included
+  const shouldIncludePowerShell = userConfig.shells?.powershell !== undefined;
+  const shouldIncludeCmd = userConfig.shells?.cmd !== undefined;
+  const shouldIncludeGitBash = userConfig.shells?.gitbash !== undefined;
   const shouldIncludeWSL =
     userConfig.shells?.wsl !== undefined ||
     merged.security.includeDefaultWSL === true ||
     userConfig.security?.includeDefaultWSL === true;
 
+  if (shouldIncludePowerShell) {
+    merged.shells.powershell = {
+      ...defaultConfig.shells.powershell,
+      ...(userConfig.shells?.powershell || {})
+    } as ShellConfig;
+  }
+
+  if (shouldIncludeCmd) {
+    merged.shells.cmd = {
+      ...defaultConfig.shells.cmd,
+      ...(userConfig.shells?.cmd || {})
+    } as ShellConfig;
+  }
+
+  if (shouldIncludeGitBash) {
+    merged.shells.gitbash = {
+      ...defaultConfig.shells.gitbash,
+      ...(userConfig.shells?.gitbash || {})
+    } as ShellConfig;
+  }
+
   if (shouldIncludeWSL) {
     merged.shells.wsl = {
       ...DEFAULT_WSL_CONFIG,
       ...(userConfig.shells?.wsl || {})
-    };
+    } as ShellConfig;
   }
 
   // Only add validatePath functions and blocked operators if they don't exist
-  // Ensure that the key exists in defaultConfig.shells before trying to access its properties
   for (const [key, shell] of Object.entries(merged.shells) as [keyof typeof merged.shells, ShellConfig][]) {
-    const defaultShellForKey = key === 'wsl' ? DEFAULT_WSL_CONFIG : defaultConfig.shells[key as keyof typeof defaultConfig.shells];
-    if (defaultShellForKey) { // Check if the shell actually exists in default config
+    // Get the appropriate default config
+    let defaultShellForKey: ShellConfig | undefined;
+    if (key === 'wsl') {
+      defaultShellForKey = DEFAULT_WSL_CONFIG;
+    } else if (key in defaultConfig.shells) {
+      defaultShellForKey = defaultConfig.shells[key as keyof typeof defaultConfig.shells];
+    }
+
+    if (defaultShellForKey) {
       if (!shell.validatePath) {
         shell.validatePath = defaultShellForKey.validatePath;
       }
