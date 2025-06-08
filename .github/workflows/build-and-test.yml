@@ -39,3 +39,59 @@ jobs:
         run: npm run build
       - name: Test
         run: npm test
+
+  test-windows-no-bash:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18.x
+      - name: Install dependencies
+        run: npm install
+      - name: Build
+        run: npm run build
+      - name: Remove Git Bash from PATH
+        shell: pwsh # Ensure this script runs with PowerShell
+        run: |
+          $gitBashPathsToRemove = @(
+            "C:\Program Files\Git\usr\bin",
+            "C:\Program Files\Git\bin",
+            "C:\Program Files\Git\mingw64\bin"
+            # Add other specific Git-related paths if known and problematic
+          )
+          $originalPath = $env:PATH
+          $pathSegments = $originalPath -split ';'
+          
+          $newPathSegments = @()
+          foreach ($segment in $pathSegments) {
+            $isGitPath = $false
+            foreach ($gitPath in $gitBashPathsToRemove) {
+              if ($segment -eq $gitPath -or $segment.StartsWith($gitPath + "\")) {
+                $isGitPath = $true
+                break
+              }
+            }
+            if (-not $isGitPath) {
+              $newPathSegments += $segment
+            }
+          }
+          $newPath = $newPathSegments -join ';'
+          
+          Write-Host "Original PATH (first 300 chars): $($originalPath.Substring(0, [System.Math]::Min($originalPath.Length, 300)))"
+          Write-Host "New PATH (first 300 chars): $($newPath.Substring(0, [System.Math]::Min($newPath.Length, 300)))"
+          echo "PATH=$newPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Verify PATH (Post-Modification)
+        shell: pwsh
+        run: |
+          Write-Host "Current PATH in this step (first 300 chars): $($env:PATH.Substring(0, [System.Math]::Min($env:PATH.Length, 300)))"
+          # Attempt to find a git bash specific command, it should not be found
+          $lsLocation = Get-Command ls -ErrorAction SilentlyContinue
+          if ($null -eq $lsLocation) {
+            Write-Host "'ls' command not found in PATH, as expected."
+          } else {
+            Write-Host "'ls' command IS STILL FOUND at $($lsLocation.Source). PATH modification might need adjustment."
+          }
+      - name: Test
+        run: npm test
