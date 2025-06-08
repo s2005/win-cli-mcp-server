@@ -39,8 +39,7 @@ export const DEFAULT_CONFIG: ServerConfig = {
     ],
     restrictWorkingDirectory: true,
     commandTimeout: 30,
-    enableInjectionProtection: true,
-    includeDefaultWSL: false
+    enableInjectionProtection: true
   },
   shells: {
     powershell: {
@@ -136,14 +135,14 @@ function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<ServerCon
     shells: {}
   };
 
+  // Remove deprecated includeDefaultWSL if present
+  delete (merged.security as any).includeDefaultWSL;
+
   // Determine which shells should be included
   const shouldIncludePowerShell = userConfig.shells?.powershell !== undefined;
   const shouldIncludeCmd = userConfig.shells?.cmd !== undefined;
   const shouldIncludeGitBash = userConfig.shells?.gitbash !== undefined;
-  const shouldIncludeWSL =
-    userConfig.shells?.wsl !== undefined ||
-    merged.security.includeDefaultWSL === true ||
-    userConfig.security?.includeDefaultWSL === true;
+  const shouldIncludeWSL = userConfig.shells?.wsl !== undefined;
 
   if (shouldIncludePowerShell) {
     merged.shells.powershell = {

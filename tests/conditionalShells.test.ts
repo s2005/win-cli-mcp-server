@@ -12,14 +12,17 @@ const createTempConfig = (config: any): string => {
 };
 
 describe('Conditional Shell Configuration', () => {
-  test('WSL behavior unchanged with includeDefaultWSL', () => {
+  test('WSL only included with explicit shells.wsl configuration', () => {
     const configPath = createTempConfig({
-      security: { includeDefaultWSL: true }
+      shells: {
+        wsl: { enabled: true }
+      }
     });
 
     const cfg = loadConfig(configPath);
 
     expect(cfg.shells).toHaveProperty('wsl');
+    expect(cfg.shells.wsl?.enabled).toBe(true);
     expect(cfg.shells).not.toHaveProperty('powershell');
     expect(cfg.shells).not.toHaveProperty('cmd');
     expect(cfg.shells).not.toHaveProperty('gitbash');

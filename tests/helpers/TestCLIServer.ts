@@ -17,7 +17,6 @@ export class TestCLIServer {
       args: [wslEmulatorPath, '-e']
     };
     baseConfig.shells = { ...baseConfig.shells, wsl: wslShell };
-    baseConfig.security.includeDefaultWSL = true;
 
     // Disable other shells by default for cross platform reliability
     baseConfig.shells.powershell.enabled = false;

@@ -157,8 +157,7 @@ If no configuration file is found, the server will use a default (restricted) co
     "allowedPaths": ["User's home directory", "Current working directory"],
     "restrictWorkingDirectory": true,
     "commandTimeout": 30,
-    "enableInjectionProtection": true,
-    "includeDefaultWSL": false
+    "enableInjectionProtection": true
   },
   "shells": {
     "powershell": {
@@ -294,19 +293,7 @@ Example minimal configuration enabling only Git Bash:
 
 ### WSL Configuration
 
-WSL support is optional. The server includes WSL settings only when your `config.json` contains a `wsl` shell configuration or the `includeDefaultWSL` flag is set to `true` in the security section.
-
-Enable the default WSL configuration:
-
-```json
-{
-  "security": {
-    "includeDefaultWSL": true
-  }
-}
-```
-
-Or provide custom WSL settings:
+WSL support is optional. To enable WSL, add it to your shell configuration:
 
 ```json
 {

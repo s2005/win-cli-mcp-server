@@ -115,4 +115,20 @@ describe('Config Normalization', () => {
 
     fs.rmSync(path.dirname(configPath), { recursive: true, force: true });
   });
+
+  test('includeDefaultWSL setting is ignored (deprecated)', () => {
+    const configPath = createTempConfig({
+      security: {
+        includeDefaultWSL: true,
+        allowedPaths: ['C\\test']
+      }
+    });
+
+    const cfg = loadConfig(configPath);
+
+    expect(cfg.shells).not.toHaveProperty('wsl');
+    expect(cfg.security).not.toHaveProperty('includeDefaultWSL');
+
+    fs.rmSync(path.dirname(configPath), { recursive: true, force: true });
+  });
 });
