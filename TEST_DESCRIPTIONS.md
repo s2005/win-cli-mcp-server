@@ -107,7 +107,7 @@ This document summarizes the purpose of each unit test in the project.
 ## tests/wsl.test.ts
 
 This file contains unit tests specifically for the Windows Subsystem for Linux (WSL) shell integration.
-It utilizes a shell script emulator `scripts/wsl.sh` to allow tests to run on non-Windows environments where `wsl.exe` is not available. The emulator mimics the basic command execution behavior of `wsl.exe -e <command>`.
+It utilizes a Node.js emulator script `scripts/wsl-emulator.js` to allow tests to run on non-Windows environments where `wsl.exe` is not available. The emulator mimics the basic command execution behavior of `wsl.exe -e <command>`.
 The tests also cover the correct normalization and validation of WSL paths (e.g., `/mnt/c/...`) when used as working directories, particularly the fixes made in `normalizeWindowsPath`.
 
 - **`should execute a simple command via WSL emulator`**: Verifies basic command execution (e.g., `echo`) using the `wsl` shell and checks for correct output.

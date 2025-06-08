@@ -10,10 +10,10 @@ export class TestCLIServer {
     const baseConfig: ServerConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
 
     // Configure wsl shell to use the local emulator script
-    const wslEmulatorPath = path.resolve(process.cwd(), 'scripts/wsl.sh');
+    const wslEmulatorPath = path.resolve(process.cwd(), 'scripts/wsl-emulator.js');
     const wslShell = {
       ...DEFAULT_WSL_CONFIG,
-      command: 'bash',
+      command: 'node',
       args: [wslEmulatorPath, '-e']
     };
     baseConfig.shells = { ...baseConfig.shells, wsl: wslShell };
