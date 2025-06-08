@@ -19,7 +19,8 @@ import {
   normalizeWindowsPath,
   validateWorkingDirectory,
   validateWslWorkingDirectory,
-  convertWindowsToWslPath
+  convertWindowsToWslPath,
+  isPathAllowed
 } from './utils/validation.js';
 import { validateDirectoriesAndThrow } from './utils/directoryValidator.js';
 import { spawn } from 'child_process';
@@ -67,6 +68,7 @@ class CLIServer {
   private server: Server;
   private allowedPaths: Set<string>;
   private blockedCommands: Set<string>;
+  private serverActiveCwd: string | undefined;
   private config: ServerConfig;
 
   constructor(config: ServerConfig) {
@@ -84,6 +86,29 @@ class CLIServer {
     // Initialize from config
     this.allowedPaths = new Set(config.security.allowedPaths);
     this.blockedCommands = new Set(config.security.blockedCommands);
+
+    const launchDir = process.cwd();
+    const normalizedLaunchDir = normalizeWindowsPath(launchDir);
+    const restrictCwd = this.config.security.restrictWorkingDirectory;
+    const allowedPathsDefined = this.config.security.allowedPaths && this.config.security.allowedPaths.length > 0;
+
+    if (restrictCwd && allowedPathsDefined) {
+      const isLaunchDirAllowed = isPathAllowed(normalizedLaunchDir, this.config.security.allowedPaths);
+      if (!isLaunchDirAllowed) {
+        this.serverActiveCwd = undefined;
+        console.error(`INFO: Server started in directory: ${launchDir}`);
+        console.error("INFO: 'restrictWorkingDirectory' is enabled, and this directory is not in the configured 'allowedPaths'.");
+        console.error("INFO: The server's active working directory is currently NOT SET.");
+        console.error("INFO: To run commands that don't specify a 'workingDir', you must first set a valid working directory using the 'set_current_directory' tool.");
+        console.error(`INFO: Configured allowed paths are: ${this.config.security.allowedPaths.map(p => normalizeWindowsPath(p)).join(', ')}`);
+      } else {
+        this.serverActiveCwd = normalizedLaunchDir;
+        console.error(`INFO: Server's active working directory initialized to: ${this.serverActiveCwd}.`);
+      }
+    } else {
+      this.serverActiveCwd = normalizedLaunchDir;
+      console.error(`INFO: Server's active working directory initialized to: ${this.serverActiveCwd}.`);
+    }
 
     this.setupHandlers();
   }
@@ -273,8 +298,23 @@ class CLIServer {
             workingDir: z.string().optional()
           }).parse(toolParams.arguments);
 
-          // Normalize and validate working directory if provided
-          let workingDir = args.workingDir ? normalizeWindowsPath(args.workingDir) : process.cwd();
+          // Determine working directory
+          let workingDir: string;
+          if (args.workingDir) {
+            workingDir = normalizeWindowsPath(args.workingDir);
+          } else {
+            if (!this.serverActiveCwd) {
+              return {
+                content: [{
+                  type: "text",
+                  text: "Error: Server's active working directory is not set. Please use the 'set_current_directory' tool to establish a valid working directory before running commands without an explicit 'workingDir'."
+                }],
+                isError: true,
+                metadata: {}
+              } as CallToolResult;
+            }
+            workingDir = this.serverActiveCwd;
+          }
 
           const shellKey = args.shell as keyof typeof this.config.shells;
           const shellConfig = this.config.shells[shellKey]!; // Assert non-null: shellKey from enum of enabled shells
@@ -320,7 +360,7 @@ class CLIServer {
           } else {
             // If no workingDir provided for WSL command, validate WSL equivalent of host's CWD.
             try {
-              pathForWslValidation = convertWindowsToWslPath(process.cwd(), shellConfig.wslMountPoint || '/mnt/');
+              pathForWslValidation = convertWindowsToWslPath(workingDir, shellConfig.wslMountPoint || '/mnt/');
             } catch (error: any) {
               throw new McpError(
                 ErrorCode.InvalidRequest,
@@ -447,7 +487,17 @@ class CLIServer {
         }
 
         case "get_current_directory": {
-          const currentDir = process.cwd();
+          if (!this.serverActiveCwd) {
+            return {
+              content: [{
+                type: "text",
+                text: "The server's active working directory is not currently set. Use 'set_current_directory' to set it."
+              }],
+              isError: false,
+              metadata: {}
+            };
+          }
+          const currentDir = this.serverActiveCwd;
           return {
             content: [{
               type: "text",
@@ -473,10 +523,10 @@ class CLIServer {
               validateWorkingDirectory(newDir, Array.from(this.allowedPaths));
             }
 
-            // Change directory
+            // Change directory and update server state
             process.chdir(newDir);
-
-            const currentDir = process.cwd();
+            this.serverActiveCwd = newDir;
+            const currentDir = this.serverActiveCwd;
             return {
               content: [{
                 type: "text",
