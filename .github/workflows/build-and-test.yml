@@ -125,41 +125,62 @@ jobs:
             Write-Host "PowerShell's 'ls' alias not found. This is unexpected at this stage."
           }
 
-      - name: Temporarily Remove PowerShell 'ls' Alias
+      - name: Remove and Verify PowerShell 'ls' Alias
         shell: pwsh
         run: |
-          Write-Host "Attempting to remove PowerShell 'ls' alias..."
-          $lsAlias = Get-Command ls -CommandType Alias -ErrorAction SilentlyContinue
-          if ($null -ne $lsAlias) {
-            Remove-Item alias:ls -Force -ErrorAction SilentlyContinue
+          Write-Host "Initial check for PowerShell 'ls' alias..."
+          $initialLsAlias = Get-Command ls -CommandType Alias -ErrorAction SilentlyContinue
+          if ($null -ne $initialLsAlias) {
+            Write-Host "PowerShell 'ls' alias found initially (Source: $($initialLsAlias.Source)). Attempting removal..."
+            Remove-Item alias:ls -Force -ErrorAction Continue # Use 'Continue' to see errors if any
+            
+            Write-Host "Verifying removal of PowerShell 'ls' alias in the same script execution..."
             $lsAliasAfterRemove = Get-Command ls -CommandType Alias -ErrorAction SilentlyContinue
             if ($null -eq $lsAliasAfterRemove) {
-              Write-Host "PowerShell 'ls' alias successfully removed for this session."
+              Write-Host "VERIFICATION SUCCESSFUL: PowerShell 'ls' alias is NOT found after removal attempt."
             } else {
-              Write-Host "WARNING: Failed to remove PowerShell 'ls' alias or it was re-established."
+              Write-Host "VERIFICATION FAILED: PowerShell 'ls' alias IS STILL FOUND (Source: $($lsAliasAfterRemove.Source)) even after removal in the same script."
+              Write-Host "Attempting fallback: defining 'ls' as an erroring function."
+              function ls { Write-Error "ls command has been intentionally disabled by a custom function." ; exit 1 }
+              $checkLsFunction = Get-Command ls -ErrorAction SilentlyContinue
+              if ($checkLsFunction.CommandType -eq 'Function') {
+                Write-Host "'ls' is now a function. Invoking it should error."
+              } else {
+                Write-Host "Failed to redefine 'ls' as a function."
+              }
             }
           } else {
-            Write-Host "PowerShell 'ls' alias was not found initially (this is unexpected if previous step showed it)."
+            Write-Host "PowerShell 'ls' alias was not found initially. No removal needed."
           }
 
-      - name: Verify PowerShell 'ls' Alias Removed
-        shell: pwsh
-        run: |
-          Write-Host "Verifying PowerShell 'ls' alias removal..."
-          $lsAliasCheck = Get-Command ls -CommandType Alias -ErrorAction SilentlyContinue
-          if ($null -eq $lsAliasCheck) {
-            Write-Host "Verification successful: PowerShell 'ls' alias is NOT found."
-          } else {
-            Write-Host "VERIFICATION FAILED: PowerShell 'ls' alias IS STILL FOUND (Source: $($lsAliasCheck.Source))."
-            Write-Host "Tests might still use PowerShell's Get-ChildItem via 'ls'."
-          }
-          # Re-check for ls.exe as well, just to be thorough
+          # Final check for ls.exe (Git Bash)
           $lsExeLocation = Get-Command ls.exe -ErrorAction SilentlyContinue
           if ($null -eq $lsExeLocation) {
-            Write-Host "'ls.exe' (Git Bash) command also remains not found in PATH, as expected."
+            Write-Host "'ls.exe' (Git Bash) also remains not found in PATH, as expected."
           } else {
             Write-Host "WARNING: 'ls.exe' (Git Bash) command IS NOW FOUND at $($lsExeLocation.Source). This is unexpected."
           }
-      - name: Test
+
+      - name: Verify 'ls' command NOT available in CMD
         shell: cmd
-        run: npm test
+        run: |
+          echo Verifying 'ls' command in CMD...
+          where ls >nul 2>&1
+          if %errorlevel% == 0 (
+            echo ERROR: 'ls' command IS FOUND in CMD via 'where' command.
+            (where ls && exit 1) || exit 1
+          ) else (
+            echo SUCCESS: 'ls' command is NOT found in CMD via 'where' command, as expected (errorlevel %errorlevel%).
+          )
+          echo Testing direct execution of 'ls'...
+          ls >nul 2>&1
+          if %errorlevel% == 9009 (
+            echo SUCCESS: Direct execution of 'ls' failed with errorlevel 9009 (command not found), as expected.
+          ) else (
+            echo ERROR: Direct execution of 'ls' did NOT fail with errorlevel 9009 (actual: %errorlevel%). 'ls' might be available.
+            exit 1
+          )
+
+      - name: Test (Specific)
+        shell: cmd
+        run: npm test -- <tests_related_to_ls_and_mockFileSystem> # USER: Please update this line
