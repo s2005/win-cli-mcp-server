@@ -7,3 +7,6 @@ config.json
 .cursorrules
 .history
 .windsurf
+
+# VS Code
+.vscode/
