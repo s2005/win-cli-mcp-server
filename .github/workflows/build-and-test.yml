@@ -164,22 +164,25 @@ jobs:
       - name: Verify 'ls' command NOT available in CMD
         shell: cmd
         run: |
-          echo Verifying 'ls' command in CMD...
+          echo Verifying 'ls' command in CMD using 'where'...
           where ls >nul 2>&1
           if %errorlevel% == 0 (
             echo ERROR: 'ls' command IS FOUND in CMD via 'where' command.
-            (where ls && exit 1) || exit 1
+            where ls
+            exit /b 1
           ) else (
-            echo SUCCESS: 'ls' command is NOT found in CMD via 'where' command, as expected (errorlevel %errorlevel%).
+            echo SUCCESS: 'ls' command is NOT found in CMD via 'where' (errorlevel %errorlevel%), as expected.
           )
-          echo Testing direct execution of 'ls'...
+          
+          echo Verifying 'ls' command in CMD by direct execution...
           ls >nul 2>&1
           if %errorlevel% == 9009 (
             echo SUCCESS: Direct execution of 'ls' failed with errorlevel 9009 (command not found), as expected.
           ) else (
             echo ERROR: Direct execution of 'ls' did NOT fail with errorlevel 9009 (actual: %errorlevel%). 'ls' might be available.
-            exit 1
+            exit /b 1
           )
+          echo All CMD 'ls' checks passed.
 
       - name: Test (Specific)
         shell: cmd
