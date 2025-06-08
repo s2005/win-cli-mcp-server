@@ -39,6 +39,7 @@ It allows MCP clients (like [Claude Desktop](https://claude.ai/download)) to per
 - **Windows Subsystem for Linux (WSL)** support for command execution.
 - **Resource Exposure**: View current directory and configuration as MCP resources
 - **Explicit Working Directory State**: The server maintains an active working directory used when `execute_command` omits `workingDir`. If the launch directory isn't allowed, this state starts unset and must be set via `set_current_directory`.
+- **Optional Initial Directory**: Configure `initialDir` to start the server in a specific directory.
 - **Security Controls**:
   - Command blocking (full paths, case variations)
   - Working directory validation
@@ -152,6 +153,7 @@ If no configuration file is found, the server will use a default (restricted) co
       "--login",
       "--system"
     ],
+    "initialDir": null,
     "allowedPaths": ["User's home directory", "Current working directory"],
     "restrictWorkingDirectory": true,
     "commandTimeout": 30,
@@ -230,6 +232,9 @@ The configuration file is divided into two main sections: `security` and `shells
       "--login", // Login shells might have different permissions
       "--system" // System level operations
     ],
+
+    // Optional starting directory for the server
+    "initialDir": null,
 
     // List of directories where commands can be executed
     "allowedPaths": ["C:\\Users\\YourUsername", "C:\\Projects"],

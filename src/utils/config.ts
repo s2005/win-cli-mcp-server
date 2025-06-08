@@ -20,6 +20,7 @@ export const DEFAULT_CONFIG: ServerConfig = {
       "--exec", "-e", "/c", "-enc", "-encodedcommand",
       "-command", "--interactive", "-i", "--login", "--system"
     ],
+    initialDir: undefined,
     allowedPaths: [
       os.homedir(),
       process.cwd()
@@ -89,9 +90,29 @@ export function loadConfig(configPath?: string): ServerConfig {
   }
 
   // Use defaults only if no config was loaded
-  const mergedConfig = Object.keys(loadedConfig).length > 0 
+  const mergedConfig = Object.keys(loadedConfig).length > 0
     ? mergeConfigs(DEFAULT_CONFIG, loadedConfig)
     : DEFAULT_CONFIG;
+
+  // Validate and process initialDir if provided
+  if (mergedConfig.security.initialDir && typeof mergedConfig.security.initialDir === 'string') {
+    const normalizedInitialDir = normalizeWindowsPath(mergedConfig.security.initialDir);
+    if (fs.existsSync(normalizedInitialDir) && fs.statSync(normalizedInitialDir).isDirectory()) {
+      mergedConfig.security.initialDir = normalizedInitialDir;
+      if (mergedConfig.security.restrictWorkingDirectory) {
+        if (!mergedConfig.security.allowedPaths.includes(normalizedInitialDir)) {
+          mergedConfig.security.allowedPaths.push(normalizedInitialDir);
+        }
+        mergedConfig.security.allowedPaths = normalizeAllowedPaths(mergedConfig.security.allowedPaths);
+      }
+    } else {
+      console.warn(`WARN: Configured initialDir '${mergedConfig.security.initialDir}' does not exist or is not a directory. Falling back to default CWD behavior.`);
+      mergedConfig.security.initialDir = undefined;
+    }
+  } else if (mergedConfig.security.initialDir !== undefined) {
+    console.warn(`WARN: Configured initialDir is not a valid string. Falling back to default CWD behavior.`);
+    mergedConfig.security.initialDir = undefined;
+  }
 
   // Normalize and dedupe allowedPaths
   mergedConfig.security.allowedPaths = normalizeAllowedPaths(mergedConfig.security.allowedPaths);
