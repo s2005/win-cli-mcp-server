@@ -3,7 +3,7 @@ dist/
 .env
 .DS_Store
 *.log
-config.json
+tests/config*.json
 .cursorrules
 .history
 .windsurf
