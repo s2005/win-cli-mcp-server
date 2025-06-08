@@ -1,6 +1,6 @@
 import path from 'path';
 import { CLIServer } from '../../src/index.js';
-import { DEFAULT_CONFIG } from '../../src/utils/config.js';
+import { DEFAULT_CONFIG, DEFAULT_WSL_CONFIG } from '../../src/utils/config.js';
 import type { ServerConfig } from '../../src/types/config.js';
 
 export class TestCLIServer {
@@ -11,13 +11,13 @@ export class TestCLIServer {
 
     // Configure wsl shell to use the local emulator script
     const wslEmulatorPath = path.resolve(process.cwd(), 'scripts/wsl.sh');
-    baseConfig.shells.wsl = {
-      enabled: true,
-      command: 'bash', // Use bash to execute the script
-      args: [wslEmulatorPath, '-e'], // Pass script path as first arg to bash
-      validatePath: (dir: string) => /^(\/mnt\/[a-zA-Z]\/|\/)/.test(dir),
-      blockedOperators: ['&', '|', ';', '`']
+    const wslShell = {
+      ...DEFAULT_WSL_CONFIG,
+      command: 'bash',
+      args: [wslEmulatorPath, '-e']
     };
+    baseConfig.shells = { ...baseConfig.shells, wsl: wslShell };
+    baseConfig.security.includeDefaultWSL = true;
 
     // Disable other shells by default for cross platform reliability
     baseConfig.shells.powershell.enabled = false;

@@ -19,7 +19,8 @@
     "allowedPaths": ["C:\\Users\\YourUsername", "C:\\Projects"],
     "restrictWorkingDirectory": true,
     "commandTimeout": 30,
-    "enableInjectionProtection": true
+    "enableInjectionProtection": true,
+    "includeDefaultWSL": false
   },
   "shells": {
     "powershell": {
@@ -38,12 +39,6 @@
       "enabled": true,
       "command": "C:\\Program Files\\Git\\bin\\bash.exe",
       "args": ["-c"],
-      "blockedOperators": ["&", "|", ";", "`"]
-    },
-    "wsl": {
-      "enabled": true,
-      "command": "wsl.exe",
-      "args": ["-e"],
       "blockedOperators": ["&", "|", ";", "`"]
     }
   }

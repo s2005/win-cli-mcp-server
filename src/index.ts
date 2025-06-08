@@ -340,7 +340,13 @@ class CLIServer {
           }
 
           const shellKey = args.shell as keyof typeof this.config.shells;
-          const shellConfig = this.config.shells[shellKey]!; // Assert non-null: shellKey from enum of enabled shells
+          const shellConfig = this.config.shells[shellKey];
+          if (!shellConfig) {
+            throw new McpError(
+              ErrorCode.InvalidRequest,
+              `Shell '${shellKey}' is not configured or enabled`
+            );
+          }
 
           if (this.config.security.restrictWorkingDirectory) {
             try {

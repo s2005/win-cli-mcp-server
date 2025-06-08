@@ -157,7 +157,8 @@ If no configuration file is found, the server will use a default (restricted) co
     "allowedPaths": ["User's home directory", "Current working directory"],
     "restrictWorkingDirectory": true,
     "commandTimeout": 30,
-    "enableInjectionProtection": true
+    "enableInjectionProtection": true,
+    "includeDefaultWSL": false
   },
   "shells": {
     "powershell": {
@@ -176,12 +177,6 @@ If no configuration file is found, the server will use a default (restricted) co
       "enabled": true,
       "command": "C:\\Program Files\\Git\\bin\\bash.exe",
       "args": ["-c"],
-      "blockedOperators": ["&", "|", ";", "`"]
-    },
-    "wsl": {
-      "enabled": true,
-      "command": "wsl.exe",
-      "args": ["-e"],
       "blockedOperators": ["&", "|", ";", "`"]
     }
   }
@@ -277,12 +272,34 @@ The configuration file is divided into two main sections: `security` and `shells
       "command": "C:\\Program Files\\Git\\bin\\bash.exe",
       "args": ["-c"],
       "blockedOperators": ["&", "|", ";", "`"]  // Block all command chaining
-    },
+    }
+  }
+}
+```
+
+### WSL Configuration
+
+WSL support is optional. The server includes WSL settings only when your `config.json` contains a `wsl` shell configuration or the `includeDefaultWSL` flag is set to `true` in the security section.
+
+Enable the default WSL configuration:
+
+```json
+{
+  "security": {
+    "includeDefaultWSL": true
+  }
+}
+```
+
+Or provide custom WSL settings:
+
+```json
+{
+  "shells": {
     "wsl": {
       "enabled": true,
-      "command": "wsl.exe", // Command to invoke WSL
-      "args": ["-e"],       // Arguments to pass to wsl.exe for command execution (e.g., '-e' to execute a command)
-      "blockedOperators": ["&", "|", ";", "`"] // Standard blocked operators
+      "command": "wsl.exe",
+      "args": ["-e"]
     }
   }
 }

@@ -6,6 +6,18 @@ import { normalizeWindowsPath, normalizeAllowedPaths } from './validation.js';
 
 const defaultValidatePathRegex = /^[a-zA-Z]:\\(?:[^<>:"/\\|?*]+\\)*[^<>:"/\\|?*]*$/;
 
+export const DEFAULT_WSL_CONFIG: ShellConfig = {
+  enabled: true,
+  command: 'wsl.exe',
+  args: ['-e'],
+  // Basic WSL path validation: starts with /mnt/<drive>/ or is a Linux-like absolute path.
+  validatePath: (dir: string) => /^(\/mnt\/[a-zA-Z]\/|\/)/.test(dir),
+  blockedOperators: ['&', '|', ';', '`'],
+  allowedPaths: [],
+  wslMountPoint: '/mnt/',
+  inheritGlobalPaths: true
+};
+
 export const DEFAULT_CONFIG: ServerConfig = {
   security: {
     maxCommandLength: 2000,
@@ -27,7 +39,8 @@ export const DEFAULT_CONFIG: ServerConfig = {
     ],
     restrictWorkingDirectory: true,
     commandTimeout: 30,
-    enableInjectionProtection: true
+    enableInjectionProtection: true,
+    includeDefaultWSL: false
   },
   shells: {
     powershell: {
@@ -50,17 +63,6 @@ export const DEFAULT_CONFIG: ServerConfig = {
       args: ['-c'],
       validatePath: (dir: string) => dir.match(defaultValidatePathRegex) !== null,
       blockedOperators: ['&', '|', ';', '`']
-      },
-      wsl: {
-        enabled: true,
-        command: '../../scripts/wsl.sh',
-        args: ['-e'],
-        // Basic WSL path validation: starts with /mnt/<drive>/ or is a Linux-like absolute path.
-        validatePath: (dir: string) => /^(\/mnt\/[a-zA-Z]\/|\/)/.test(dir),
-        blockedOperators: ['&', '|', ';', '`'],
-        allowedPaths: [],
-        wslMountPoint: '/mnt/',
-        inheritGlobalPaths: true
     }
   },
 };
@@ -144,18 +146,26 @@ function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<ServerCon
       gitbash: {
         ...defaultConfig.shells.gitbash,
         ...(userConfig.shells?.gitbash || {})
-      },
-      wsl: {
-        ...defaultConfig.shells.wsl!, // Assert wsl is defined in default config
-        ...(userConfig.shells?.wsl || {})
       }
     }
   };
 
+  const shouldIncludeWSL =
+    userConfig.shells?.wsl !== undefined ||
+    merged.security.includeDefaultWSL === true ||
+    userConfig.security?.includeDefaultWSL === true;
+
+  if (shouldIncludeWSL) {
+    merged.shells.wsl = {
+      ...DEFAULT_WSL_CONFIG,
+      ...(userConfig.shells?.wsl || {})
+    };
+  }
+
   // Only add validatePath functions and blocked operators if they don't exist
   // Ensure that the key exists in defaultConfig.shells before trying to access its properties
   for (const [key, shell] of Object.entries(merged.shells) as [keyof typeof merged.shells, ShellConfig][]) {
-    const defaultShellForKey = defaultConfig.shells[key];
+    const defaultShellForKey = key === 'wsl' ? DEFAULT_WSL_CONFIG : defaultConfig.shells[key as keyof typeof defaultConfig.shells];
     if (defaultShellForKey) { // Check if the shell actually exists in default config
       if (!shell.validatePath) {
         shell.validatePath = defaultShellForKey.validatePath;

@@ -182,7 +182,10 @@ export function convertWindowsToWslPath(windowsPath: string, mountPoint: string 
   return windowsPath;
 }
 
-export function resolveWslAllowedPaths(globalAllowedPaths: string[], wslConfig: ShellConfig): string[] {
+export function resolveWslAllowedPaths(globalAllowedPaths: string[], wslConfig?: ShellConfig): string[] {
+  if (!wslConfig) {
+    return [];
+  }
   const wslPaths: string[] = [];
   const mountPoint = wslConfig.wslMountPoint || '/mnt/';
 
@@ -248,7 +251,10 @@ export function isWslPathAllowed(testPath: string, allowedPaths: string[]): bool
   });
 }
 
-export function validateWslWorkingDirectory(dir: string, wslConfig: ShellConfig, globalAllowedPaths: string[]): void {
+export function validateWslWorkingDirectory(dir: string, wslConfig: ShellConfig | undefined, globalAllowedPaths: string[]): void {
+  if (!wslConfig) {
+    throw new Error('WSL shell is not configured');
+  }
   // Ensure dir is an absolute WSL/Linux-style path
   if (!path.posix.isAbsolute(dir)) {
       throw new Error('WSL working directory must be an absolute path (e.g., /mnt/c/Users or /home/user)');
