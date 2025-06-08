@@ -324,7 +324,12 @@ class CLIServer {
           // Determine working directory
           let workingDir: string;
           if (args.workingDir) {
-            workingDir = normalizeWindowsPath(args.workingDir);
+            // Preserve WSL paths; normalize others
+            if (args.shell === 'wsl') {
+              workingDir = args.workingDir;
+            } else {
+              workingDir = normalizeWindowsPath(args.workingDir);
+            }
           } else {
             if (!this.serverActiveCwd) {
               return {
@@ -350,15 +355,17 @@ class CLIServer {
 
           if (this.config.security.restrictWorkingDirectory) {
             try {
-              // Use the normalized path for validation
-              validateWorkingDirectory(workingDir, Array.from(this.allowedPaths));
-              } catch (error: any) { // Make error 'any' to access error.message
+              if (shellKey === 'wsl') {
+                validateWslWorkingDirectory(workingDir, Array.from(this.allowedPaths));
+              } else {
+                validateWorkingDirectory(workingDir, Array.from(this.allowedPaths));
+              }
+            } catch (error: any) {
               let originalWorkingDir = args.workingDir ? args.workingDir : process.cwd();
-                // Include the caught error's message for diagnostics
-                const detailMessage = error && typeof error.message === 'string' ? error.message : String(error);
+              const detailMessage = error && typeof error.message === 'string' ? error.message : String(error);
               throw new McpError(
                 ErrorCode.InvalidRequest,
-                  `Working directory (${originalWorkingDir}) outside allowed paths. Original error: ${detailMessage}. Use validate_directories tool to validate directories before execution.`
+                `Working directory (${originalWorkingDir}) outside allowed paths. Original error: ${detailMessage}. Use validate_directories tool to validate directories before execution.`
               );
             }
           }
@@ -401,7 +408,7 @@ class CLIServer {
           if (this.config.security.restrictWorkingDirectory) {
             try {
               // Validate this conceptual WSL working directory.
-              validateWslWorkingDirectory(pathForWslValidation, shellConfig, Array.from(this.allowedPaths));
+              validateWslWorkingDirectory(pathForWslValidation, Array.from(this.allowedPaths));
             } catch (error: any) {
               throw new McpError(
                 ErrorCode.InvalidRequest,
