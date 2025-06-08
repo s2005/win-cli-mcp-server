@@ -316,6 +316,14 @@ export function validateWorkingDirectory(dir: string, allowedPaths: string[]): v
     }
 }
 
+/**
+ * Normalizes Windows paths to a consistent format
+ * - Git Bash paths (/c/foo) → C:\\foo
+ * - WSL paths (/mnt/..., /home/...) → preserved with forward slashes
+ * - Single backslash paths (\\Users) → C:\\Users (relative to system drive)
+ * - UNC paths (\\\\server\\share) → preserved
+ * - Relative paths → resolved relative to C:\\
+ */
 export function normalizeWindowsPath(inputPath: string): string {
     // TEMPORARILY simplified for diagnostics, with WSL path distinction
     // console.log(`normalizeWindowsPath (simplified) INPUT: '${inputPath}'`);
@@ -359,6 +367,11 @@ export function normalizeWindowsPath(inputPath: string): string {
     else {
         // Convert any forward slashes to backslashes for Windows paths
         tempPath = tempPath.replace(/\//g, '\\');
+
+        // Handle paths starting with a single backslash (e.g. \Users\foo)
+        if (tempPath.startsWith('\\') && !tempPath.startsWith('\\\\')) {
+            tempPath = 'C:' + tempPath;
+        }
     }
 
     // --- Windows Path Resolution and Normalization ---

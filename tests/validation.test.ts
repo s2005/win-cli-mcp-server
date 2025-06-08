@@ -153,6 +153,15 @@ describe('Path Normalization', () => {
     ['\\\\server\\share\\file', '\\\\server\\share\\file'],
     ['//server/share/folder', '/server/share/folder'],  // Fixed: UNC from // isn't handled the same
 
+    // Single backslash paths relative to system drive
+    ['\\Program Files\\App', 'C:\\Program Files\\App'],
+    ['\\Windows', 'C:\\Windows'],
+    ['\\', 'C:\\'],
+
+    // Ensure UNC paths still handled
+    ['\\\\server\\share', '\\\\server\\share'],
+    ['\\\\192.168.1.1\\folder', '\\\\192.168.1.1\\folder'],
+
     // WSL paths (preserved)
     ['/mnt/c/foo/bar', '/mnt/c/foo/bar'],
     ['/mnt/d/', '/mnt/d/'],
