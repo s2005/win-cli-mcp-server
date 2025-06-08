@@ -38,6 +38,7 @@ It allows MCP clients (like [Claude Desktop](https://claude.ai/download)) to per
 - **Multi-Shell Support**: Execute commands in PowerShell, Command Prompt (CMD), and Git Bash
 - **Windows Subsystem for Linux (WSL)** support for command execution.
 - **Resource Exposure**: View current directory and configuration as MCP resources
+- **Explicit Working Directory State**: The server maintains an active working directory used when `execute_command` omits `workingDir`. If the launch directory isn't allowed, this state starts unset and must be set via `set_current_directory`.
 - **Security Controls**:
   - Command blocking (full paths, case variations)
   - Working directory validation
@@ -309,13 +310,14 @@ You can execute a series of commands in one request by joining them with `&&`. T
     - `command` (string): Command to execute
     - `workingDir` (optional string): Working directory
   - Returns command output as text, or error message if execution fails
+  - If `workingDir` is omitted, the command runs in the server's active working directory. If this has not been set, the tool returns an error.
 
 - **get_current_directory**
-  - Get the current working directory of the server
-  - Returns the current working directory path
+  - Get the server's active working directory
+  - If the directory is not set, returns a message explaining how to set it
 
 - **set_current_directory**
-  - Set the current working directory of the server
+  - Set the server's active working directory
   - Inputs:
     - `path` (string): Path to set as current working directory
   - Returns confirmation message with the new directory path, or error message if the change fails
