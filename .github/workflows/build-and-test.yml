@@ -183,4 +183,4 @@ jobs:
 
       - name: Test (Specific)
         shell: cmd
-        run: npm test -- <tests_related_to_ls_and_mockFileSystem> # USER: Please update this line
+        run: npm test -- tests/integration/shellExecution.test.ts tests/wsl.test.ts
