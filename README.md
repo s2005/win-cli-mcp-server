@@ -245,6 +245,38 @@ The configuration file is divided into two main sections: `security` and `shells
 }
 ```
 
+#### Server Active Working Directory
+
+The server maintains an "active working directory" (internally `serverActiveCwd`). This directory is used as the default current working directory (CWD) for the `execute_command` tool when the optional `workingDir` parameter is not provided.
+
+**Initialization at Startup:**
+
+The `serverActiveCwd` is determined when the server starts, based on the following logic:
+
+1.  The server first identifies its own launch directory (i.e., the directory from which the `npx @simonb97/server-win-cli` command was executed, equivalent to `process.cwd()`).
+2.  **If `security.restrictWorkingDirectory` is `true` and `security.allowedPaths` is defined and contains one or more paths:**
+    *   The server checks if its launch directory is within any of the configured `allowedPaths`.
+    *   If the launch directory **is allowed**, `serverActiveCwd` is initialized to this normalized launch directory. An informational message will be logged: `INFO: Server's active working directory initialized to: <path>.`
+    *   If the launch directory **is NOT allowed**, `serverActiveCwd` will be `undefined`. This means the server currently does not have a default working directory set. In this scenario, the server will log several `INFO` messages to `console.error` explaining the situation:
+        *   `INFO: Server started in directory: <path>.`
+        *   `INFO: 'restrictWorkingDirectory' is enabled, and this directory is not in the configured 'allowedPaths'.`
+        *   `INFO: The server's active working directory is currently NOT SET.`
+        *   `INFO: To run commands that don't specify a 'workingDir', you must first set a valid working directory using the 'set_current_directory' tool.`
+        *   `INFO: Configured allowed paths are: <list of allowed paths>.`
+3.  **If `security.restrictWorkingDirectory` is `false`, or if `security.allowedPaths` is not defined or is empty:**
+    *   `serverActiveCwd` is initialized to the server's normalized launch directory. An informational message will be logged: `INFO: Server's active working directory initialized to: <path>.`
+
+**Implications for Tool Usage:**
+
+*   **`execute_command`:**
+    *   If `workingDir` is provided, that path is used (after validation against `allowedPaths` if restrictions are on).
+    *   If `workingDir` is *not* provided, the command attempts to use `serverActiveCwd`.
+    *   If `workingDir` is not provided and `serverActiveCwd` is `undefined`, `execute_command` will return an error. You must first use `set_current_directory` to establish a valid active working directory.
+*   **`set_current_directory`:** This tool is crucial for setting or changing `serverActiveCwd`. If the server starts and `serverActiveCwd` is `undefined` due to the reasons above, you **must** use this tool to set a valid working directory (from `allowedPaths`) before `execute_command` can be used without an explicit `workingDir`.
+*   **`get_current_directory`:** This tool returns the current value of `serverActiveCwd`, or a message indicating it's not set if `serverActiveCwd` is `undefined`.
+
+Understanding this behavior is key to correctly using the server, especially when directory restrictions are enabled.
+
 #### Shell Configuration
 
 ```json
