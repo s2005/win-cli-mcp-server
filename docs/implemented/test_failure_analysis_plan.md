@@ -2,22 +2,23 @@
 
 This document outlines the plan to investigate and resolve the failing unit tests in the `win-cli-mcp-server` project.
 
-## Summary of Failing Test Suites:
+## Summary of Failing Test Suites
 
-1.  `tests/validation.test.ts` (1 failure)
-2.  `tests/integration/endToEnd.test.ts` (1 failure)
-3.  `tests/integration/shellExecution.test.ts` (1 failure)
-4.  `tests/wsl.test.ts` (7 failures)
-5.  `tests/asyncOperations.test.ts` (3 failures)
-6.  `tests/directoryValidator.test.ts` (3 failures)
+1. `tests/validation.test.ts` (1 failure)
+2. `tests/integration/endToEnd.test.ts` (1 failure)
+3. `tests/integration/shellExecution.test.ts` (1 failure)
+4. `tests/wsl.test.ts` (7 failures)
+5. `tests/asyncOperations.test.ts` (3 failures)
+6. `tests/directoryValidator.test.ts` (3 failures)
 
-## Investigation and Debugging Steps:
+## Investigation and Debugging Steps
 
 The failures will be addressed in the following order, as some issues might be root causes for others.
 
 ### Phase 1: Core Path and WSL Execution Issues
 
 #### 1.1. `tests/validation.test.ts` - Path Normalization
+
     *   **Test:** `Path Normalization › normalizeWindowsPath(\Users\test) should return C:\Users\test`
     *   **Error:** Expected `"C:\\Users\\test"`, Received `"\\\\Users\\test"`
     *   **Action:**
@@ -27,6 +28,7 @@ The failures will be addressed in the following order, as some issues might be r
         4.  Run `npm test tests/validation.test.ts` to verify the fix.
 
 #### 1.2. `tests/wsl.test.ts` - Basic WSL Command Execution (Exit Code 127)
+
     *   **Tests (Examples):**
         *   `Test 1: Basic command execution (echo)`
         *   `Test 4.1: uname -a execution`
@@ -42,6 +44,7 @@ The failures will be addressed in the following order, as some issues might be r
 ### Phase 2: Integration and More Complex WSL Scenarios
 
 #### 2.1. `tests/integration/endToEnd.test.ts` & `tests/integration/shellExecution.test.ts`
+
     *   **Tests:**
         *   `endToEnd.test.ts › should execute shell command with proper isolation`
         *   `shellExecution.test.ts › should execute when working directory allowed`
@@ -53,6 +56,7 @@ The failures will be addressed in the following order, as some issues might be r
         4.  Run `npm test tests/integration/endToEnd.test.ts tests/integration/shellExecution.test.ts`.
 
 #### 2.2. `tests/wsl.test.ts` - Remaining WSL Failures
+
     *   **Tests (Examples):**
         *   `Test 2: Command with a specific error exit code` (Expected 42, Received 127)
         *   `Test 3: Command producing stderr output` (Expected 2, Received 127)
@@ -67,6 +71,7 @@ The failures will be addressed in the following order, as some issues might be r
 ### Phase 3: Asynchronous Operations
 
 #### 3.1. `tests/asyncOperations.test.ts`
+
     *   **Tests:**
         *   `should handle concurrent command executions`
         *   `should queue commands when limit reached`
@@ -82,6 +87,7 @@ The failures will be addressed in the following order, as some issues might be r
 ### Phase 4: Error Message Validation
 
 #### 4.1. `tests/directoryValidator.test.ts`
+
     *   **Tests (Examples):**
         *   `should throw with correct message for ["C:\\Windows\\System32"]`
         *   `should throw with correct message for ["E:\\Dir1","F:\\Dir2"]`
@@ -94,10 +100,10 @@ The failures will be addressed in the following order, as some issues might be r
         4.  For example, the test for `["C:\\Windows\\System32"]` expects `StringMatching /directory is outside.*C:\Windows\System32/i`. The actual message is `"MCP error -32600: The following directory is outside allowed paths: C:\\Windows\\System32. Allowed paths are: C:\\Users\\test, D:\\Projects. Commands with restricted directory are not allowed to execute."`. The regex needs to be updated to match this more detailed format if this detail is desired.
         5.  Run `npm test tests/directoryValidator.test.ts`.
 
-## General Notes:
+## General Notes
 
-*   Use `console.log` or a debugger extensively within the test files and source code to trace execution flow and inspect variable states.
-*   Run tests individually using `npm test <test_file_path>` or `jest <test_file_path>` to focus efforts on specific failing areas.
-*   The warning "A worker process has failed to exit gracefully..." suggests potential unhandled promises or open handles (like timers, file streams, or child processes) in some tests or in the server teardown logic. This should be investigated after the primary functional failures are resolved, possibly by running Jest with the `--detectOpenHandles` flag.
+* Use `console.log` or a debugger extensively within the test files and source code to trace execution flow and inspect variable states.
+* Run tests individually using `npm test <test_file_path>` or `jest <test_file_path>` to focus efforts on specific failing areas.
+* The warning "A worker process has failed to exit gracefully..." suggests potential unhandled promises or open handles (like timers, file streams, or child processes) in some tests or in the server teardown logic. This should be investigated after the primary functional failures are resolved, possibly by running Jest with the `--detectOpenHandles` flag.
 
 This plan provides a structured approach to systematically debug and fix the failing tests.

@@ -224,6 +224,6 @@ startupMessages.forEach(msg => console.error(msg));
    - All new and modified unit tests outlined in section "3. Unit Test Considerations" pass successfully.
    - The command `npm run test` (or equivalent test execution command for the project) completes without any new errors or failures introduced by these changes.
 8. **Documentation:**
-   - (Out of scope for this specific implementation task, but for completeness) README and relevant tool descriptions should be updated to reflect the new `initialDir` option and its behavior.
+   - README, TEST_DESCRIPTIONS and relevant tool descriptions should be updated to reflect the new `initialDir` option and its behavior.
 
 This plan covers the necessary code changes, unit test adjustments, logging considerations, and acceptance criteria for implementing the `initialDir` feature.
