@@ -16,6 +16,12 @@ This document summarizes the purpose of each unit test in the project.
 - **allows changing directory outside allowed paths when restriction disabled** – confirms unrestricted working directory settings allow `cd` into disallowed paths.
 - **rejects changing directory outside allowed paths when restriction enabled** – checks that enabling the restriction prevents `cd` to directories beyond the allowed list.
 
+## tests/conditionalShells.test.ts
+
+- **includeDefaultWSL adds only WSL shell** – enabling `includeDefaultWSL` results in a configuration containing only the WSL shell.
+- **backward compatibility with explicit shell list** – specifying all shells explicitly retains each shell entry in the loaded config.
+- **assigns validatePath and blockedOperators for shells** – enabled shells have default path validators and blocked operator lists populated.
+
 ## tests/configNormalization.test.ts
 
 - **loadConfig lower-cases and normalizes allowedPaths** – tests that loading configuration normalizes path casing and formats allowed paths consistently.
