@@ -1,4 +1,4 @@
-import { DEFAULT_CONFIG } from '../../src/utils/config.js';
+import { DEFAULT_CONFIG, DEFAULT_WSL_CONFIG } from '../../src/utils/config.js';
 import type { ServerConfig, ShellConfig } from '../../src/types/config.js';
 
 /**
@@ -29,9 +29,9 @@ export function buildTestConfig(overrides: Partial<ServerConfig> = {}): ServerCo
       powershell: mergeShellConfig(DEFAULT_CONFIG.shells.powershell, overrides.shells?.powershell),
       cmd: mergeShellConfig(DEFAULT_CONFIG.shells.cmd, overrides.shells?.cmd),
       gitbash: mergeShellConfig(DEFAULT_CONFIG.shells.gitbash, overrides.shells?.gitbash),
-      // DEFAULT_CONFIG.shells.wsl is guaranteed to be a ShellConfig by its definition in DEFAULT_CONFIG
-      // The non-null assertion operator (!) is safe here.
-      wsl: mergeShellConfig(DEFAULT_CONFIG.shells.wsl!, overrides.shells?.wsl), 
+      ...(overrides.shells?.wsl || overrides.security?.includeDefaultWSL || DEFAULT_CONFIG.security.includeDefaultWSL ? {
+        wsl: mergeShellConfig(DEFAULT_WSL_CONFIG, overrides.shells?.wsl)
+      } : {})
     },
   };
 }

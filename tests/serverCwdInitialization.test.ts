@@ -8,7 +8,9 @@ const OUTSIDE_DIR = 'C:\\not\\allowed';
 describe('Server active working directory initialization', () => {
   test('launch outside allowed paths leaves active cwd undefined', () => {
     const cwdSpy = jest.spyOn(process, 'cwd').mockReturnValue(OUTSIDE_DIR);
-    const config = buildTestConfig({ security: { allowedPaths: [ALLOWED_DIR], restrictWorkingDirectory: true } });
+    const config = buildTestConfig({
+      security: { allowedPaths: [ALLOWED_DIR], restrictWorkingDirectory: true, includeDefaultWSL: true }
+    });
     const server = new CLIServer(config);
     expect((server as any).serverActiveCwd).toBeUndefined();
     cwdSpy.mockRestore();
@@ -16,7 +18,9 @@ describe('Server active working directory initialization', () => {
 
   test('execute_command without workingDir fails when active cwd undefined', async () => {
     const cwdSpy = jest.spyOn(process, 'cwd').mockReturnValue(OUTSIDE_DIR);
-    const config = buildTestConfig({ security: { allowedPaths: [ALLOWED_DIR], restrictWorkingDirectory: true } });
+    const config = buildTestConfig({
+      security: { allowedPaths: [ALLOWED_DIR], restrictWorkingDirectory: true, includeDefaultWSL: true }
+    });
     const server = new CLIServer(config);
     const res = await server._executeTool({ name: 'execute_command', arguments: { shell: 'wsl', command: 'echo hi' } });
     expect(res.isError).toBe(true);

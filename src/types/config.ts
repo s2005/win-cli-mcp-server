@@ -7,6 +7,7 @@ export interface SecurityConfig {
   commandTimeout: number;
   enableInjectionProtection: boolean;
   initialDir?: string;
+  includeDefaultWSL?: boolean;
 }
 
 export interface ShellConfig {
