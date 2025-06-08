@@ -18,12 +18,13 @@ describe('WSL Emulator Functionality', () => {
   });
 
   test('pwd returns current directory', () => {
+    const tmpDir = path.resolve(process.platform === 'win32' ? process.env.TEMP || 'C:/tmp' : '/tmp');
     const result = spawnSync('node', [wslEmulatorPath, '-e', 'pwd'], {
       encoding: 'utf8',
-      cwd: '/tmp'
+      cwd: tmpDir
     });
     expect(result.status).toBe(0);
-    expect(result.stdout.trim()).toBe('/tmp');
+    expect(result.stdout.trim()).toBe(tmpDir);
   });
 
   test('ls /tmp returns simulated output', () => {

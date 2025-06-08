@@ -41,7 +41,13 @@
     "start": "node dist/index.js",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
-    "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage"
+    "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
+    "test:validation": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/validation.test.ts",
+    "test:wsl": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/wsl.test.ts",
+    "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/integration/",
+    "test:async": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/asyncOperations.test.ts",
+    "test:directory": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/directoryValidator.test.ts",
+    "test:debug": "node --experimental-vm-modules node_modules/jest/bin/jest.js --detectOpenHandles"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.0.1",
