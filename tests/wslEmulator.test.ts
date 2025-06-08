@@ -16,4 +16,21 @@ describe('WSL Emulator Functionality', () => {
     const result = spawnSync('node', [wslEmulatorPath, '-e', 'exit', '42']);
     expect(result.status).toBe(42);
   });
+
+  test('pwd returns current directory', () => {
+    const result = spawnSync('node', [wslEmulatorPath, '-e', 'pwd'], {
+      encoding: 'utf8',
+      cwd: '/tmp'
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe('/tmp');
+  });
+
+  test('ls /tmp returns simulated output', () => {
+    const result = spawnSync('node', [wslEmulatorPath, '-e', 'ls', '/tmp'], {
+      encoding: 'utf8'
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('total 0');
+  });
 });
