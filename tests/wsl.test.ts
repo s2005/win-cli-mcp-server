@@ -11,7 +11,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const wslEmulatorPath = path.resolve(process.cwd(), 'scripts/wsl.sh');
+const wslEmulatorPath = path.resolve(process.cwd(), 'scripts/wsl-emulator.js');
 
 describe('WSL Shell Execution via Emulator (Tests 1-4)', () => {
   let serverInstance: CLIServer;
@@ -21,8 +21,8 @@ describe('WSL Shell Execution via Emulator (Tests 1-4)', () => {
     testConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
     testConfig.shells.wsl = {
       enabled: true,
-      command: 'bash', // Explicitly use bash to run the .sh script
-      args: [wslEmulatorPath, '-e'], // Pass script path as first arg to bash
+      command: 'node', // Use Node.js to run the JS emulator
+      args: [wslEmulatorPath, '-e'], // Pass emulator path
       validatePath: (dir: string) => /^(\/mnt\/[a-zA-Z]\/|\/)/.test(dir),
       blockedOperators: ['&', '|', ';', '`']
     };
@@ -94,7 +94,7 @@ describe('WSL Shell Execution via Emulator (Tests 1-4)', () => {
   });
 
   test('Test 4.2: Command with multiple arguments (ls -la /tmp)', async () => {
-    // /tmp should generally exist in a Linux-like environment provided by wsl.sh
+    // /tmp should generally exist in a Linux-like environment provided by the emulator
     const result = await serverInstance._executeTool({
       name: 'execute_command',
       arguments: { shell: 'wsl', command: 'ls -la /tmp' }
@@ -108,7 +108,7 @@ describe('WSL Shell Execution via Emulator (Tests 1-4)', () => {
   });
 
   test('Test 4.3: Command with non-existent path argument (ls /mnt/c)', async () => {
-    // The wsl.sh emulator runs in `/app` and does not have `/mnt/c`. This command should fail.
+    // The emulator runs in `/app` and does not have `/mnt/c`. This command should fail.
     const result = await serverInstance._executeTool({
       name: 'execute_command',
       arguments: { shell: 'wsl', command: 'ls /mnt/c' }
@@ -128,8 +128,8 @@ describe('WSL Working Directory Validation (Test 5)', () => { // Removed .only
     cwdTestConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
     cwdTestConfig.shells.wsl = {
       enabled: true,
-      command: 'bash', // Explicitly use bash to run the .sh script
-      args: [wslEmulatorPath, '-e'], // Pass script path as first arg to bash
+      command: 'node', // Use Node.js to run the JS emulator
+      args: [wslEmulatorPath, '-e'], // Pass emulator path
       validatePath: (dir: string) => /^(\/mnt\/[a-zA-Z]\/|\/)/.test(dir),
       blockedOperators: ['&', '|', ';', '`']
     };
@@ -163,7 +163,7 @@ describe('WSL Working Directory Validation (Test 5)', () => { // Removed .only
 
     expect(result.isError).toBe(false);
     expect((result.metadata as any)?.exitCode).toBe(0);
-    // `pwd` in the emulator (wsl.sh) will output the CWD of the node process (e.g. /app)
+    // `pwd` in the emulator will output the CWD of the node process (e.g. /app)
     // not the conceptual wslOriginalPath.
     const firstContent = result.content[0];
     if (firstContent && firstContent.type === 'text') {

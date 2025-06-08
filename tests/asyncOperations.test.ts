@@ -5,7 +5,7 @@ import type { ServerConfig } from '../src/types/config.js';
 import path from 'path';
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
-const wslEmulatorPath = path.resolve(process.cwd(), 'scripts/wsl.sh');
+const wslEmulatorPath = path.resolve(process.cwd(), 'scripts/wsl-emulator.js');
 
 describe('Async Command Execution', () => {
   let server: CLIServer;
@@ -15,8 +15,8 @@ describe('Async Command Execution', () => {
     config = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
     config.shells.wsl = {
       enabled: true,
-      command: 'bash', // Use bash to execute the script
-      args: [wslEmulatorPath, '-e'], // Pass script path as first arg to bash
+      command: 'node', // Use node to execute the JS emulator
+      args: [wslEmulatorPath, '-e'], // Pass emulator path
       validatePath: (dir: string) => /^(\/mnt\/[a-zA-Z]\/|\/)/.test(dir),
       blockedOperators: ['&', '|', ';', '`']
     };
