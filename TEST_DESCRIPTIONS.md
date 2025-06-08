@@ -16,6 +16,8 @@ This document summarizes the purpose of each unit test in the project.
 - **allows changing directory outside allowed paths when restriction disabled** – confirms unrestricted working directory settings allow `cd` into disallowed paths.
 - **rejects changing directory outside allowed paths when restriction enabled** – checks that enabling the restriction prevents `cd` to directories beyond the allowed list.
 
+## tests/conditionalShells.test.ts
+
 - **WSL only included with explicit configuration** – ensures the WSL shell is available only when the `wsl` shell is specified in configuration.
 - **backward compatibility with explicit shell list** – specifying all shells explicitly retains each shell entry in the loaded config.
 - **assigns validatePath and blockedOperators for shells** – enabled shells have default path validators and blocked operator lists populated.
@@ -118,12 +120,24 @@ The tests also cover the correct normalization and validation of WSL paths (e.g.
     - **`should execute command in valid WSL working directory when allowed` (Test 5.1)**: Verifies that a command can be executed when its `workingDir` is a valid WSL path (e.g., `/mnt/c/some_dir`) and this path is correctly normalized and listed in `allowedPaths`.
     - **`should reject command in invalid WSL working directory (different root)` (Test 5.2)**: Ensures commands are rejected if their `workingDir` is a WSL path on a different/disallowed root (e.g., `/mnt/d/...` when only `/mnt/c/...` is allowed).
     - **`should reject command in invalid WSL working directory (disallowed suffix)` (Test 5.3)**: Ensures commands are rejected if their `workingDir` is a WSL path that is not covered by any entry in `allowedPaths`.
+
+## tests/wslEmulator.test.ts
+
+- **emulator handles basic commands** – verifies that the Node-based WSL emulator executes simple commands like `echo`.
+- **emulator propagates exit codes** – ensures exit codes from commands run through the emulator are returned.
+- **pwd returns current directory** – checks that the emulator prints the working directory when running `pwd`.
+- **ls /tmp returns simulated output** – confirms the emulator returns a stub directory listing for `ls /tmp`.
+
 ## tests/processManagement.test.ts
 
 - **should terminate process on timeout** – ensures that a long-running command is killed after exceeding the configured timeout.
 - **should handle process spawn errors gracefully** – verifies that spawn failures throw a descriptive `McpError`.
 - **should propagate shell process errors** – checks that errors emitted by the spawned process reject the command.
 - **should clear timeout when process exits normally** – confirms that the timeout is cleared and the process is not killed when it finishes before the limit.
+
+## tests/testCleanup.test.ts
+
+- **ensures no residual open handles between tests** – placeholder verification that global cleanup completes without warnings.
 
 ## tests/asyncOperations.test.ts
 
@@ -157,10 +171,9 @@ The tests also cover the correct normalization and validation of WSL paths (e.g.
 - **rejects directories outside the allowed set or with invalid format** – errors are thrown for disallowed roots, relative paths or Windows-style paths.
 - **supports custom mount points and ignores unsupported global UNC paths** – validation uses the configured mount prefix and logs warnings for skipped UNC paths.
 
-## tests/wsl/validation.test.ts
+## tests/wsl/isWslPathAllowed.test.ts
 
-- **isWslPathAllowed matches paths correctly** – parameterized cases verify exact matches, subdirectories and disallowed variations.
-- **normalizes paths before comparison** – relative segments like `..` or `.` are resolved for accurate checks.
+- **matches allowed and disallowed paths including `/mnt/<drive>` conversion** – parameterized cases verify path allowance and drive mount handling.
 
 ## tests/integration/endToEnd.test.ts
 
