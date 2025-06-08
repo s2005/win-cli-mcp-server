@@ -288,7 +288,6 @@ The configuration file is divided into two main sections: `security` and `shells
 }
 ```
 
-
 #### Chained Commands
 
 You can execute a series of commands in one request by joining them with `&&`. The server validates each step and checks any `cd` operations against the allowed directories.
@@ -403,18 +402,19 @@ This project includes a [Dev Container](https://code.visualstudio.com/docs/remot
 
 ### Getting Started
 
-1.  Clone this repository to your local machine.
-2.  Open the repository in Visual Studio Code.
-3.  When prompted "Reopen in Container", click the button. (If you don't see a prompt, you can open the Command Palette (Ctrl+Shift+P or Cmd+Shift+P) and select "Dev Containers: Reopen in Container".)
-4.  VS Code will build the dev container image (as defined in `.devcontainer/devcontainer.json` and `Dockerfile`) and start the container. This might take a few minutes the first time.
-5.  Once the container is built and started, your VS Code will be connected to this environment. The `postCreateCommand` (`npm install`) will ensure all dependencies are installed.
+1. Clone this repository to your local machine.
+2. Open the repository in Visual Studio Code.
+3. When prompted "Reopen in Container", click the button. (If you don't see a prompt, you can open the Command Palette (Ctrl+Shift+P or Cmd+Shift+P) and select "Dev Containers: Reopen in Container".)
+4. VS Code will build the dev container image (as defined in `.devcontainer/devcontainer.json` and `Dockerfile`) and start the container. This might take a few minutes the first time.
+5. Once the container is built and started, your VS Code will be connected to this environment. The `postCreateCommand` (`npm install`) will ensure all dependencies are installed.
 
 ### Running Tests
 
 After opening the project in the dev container:
 
-1.  Open a new terminal in VS Code (it will be a terminal inside the container).
-2.  Run the tests using the command:
+1. Open a new terminal in VS Code (it will be a terminal inside the container).
+2. Run the tests using the command:
+
     ```bash
     npm test
     ```
