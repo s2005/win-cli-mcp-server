@@ -9,6 +9,8 @@ import {
   parseCommand,
   isPathAllowed,
   validateWorkingDirectory,
+  isWslPathAllowed,
+  validateWslWorkingDirectory,
   normalizeWindowsPath,
   normalizeAllowedPaths,
   validateShellOperators
@@ -311,5 +313,28 @@ describe('Shell Operator Validation', () => {
     } else {
       expect(() => validateShellOperators(command, shellConfig)).not.toThrow();
     }
+  });
+});
+
+describe('WSL Path Validation', () => {
+  const allowedPaths = ['/mnt/c/allowed', '/tmp', 'C:\\Windows\\allowed'];
+
+  test.each([
+    ['/mnt/c/allowed/subdir', true],
+    ['/tmp/workdir', true],
+    ['/mnt/c/Windows/allowed/test', true],
+    ['/mnt/d/forbidden', false],
+    ['/usr/local', false],
+    ['/home/user', false],
+  ])('isWslPathAllowed(%s) should return %s', (path, expected) => {
+    expect(isWslPathAllowed(path, allowedPaths)).toBe(expected);
+  });
+
+  test('validateWslWorkingDirectory throws for invalid paths', () => {
+    expect(() => validateWslWorkingDirectory('/mnt/d/invalid', allowedPaths))
+      .toThrow('WSL working directory must be within allowed paths');
+
+    expect(() => validateWslWorkingDirectory('relative/path', allowedPaths))
+      .toThrow('WSL working directory must be an absolute path');
   });
 });
