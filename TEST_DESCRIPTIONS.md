@@ -41,6 +41,24 @@ This document summarizes the purpose of each unit test in the project.
 - **createSerializableConfig returns consistent config structure** – checks that the structure of the serialized config always contains the necessary keys for security and shell settings.
 - **get_config tool response format** – ensures the response format produced by the configuration tool is correctly shaped and contains the serialized config.
 
+## tests/initialDirConfig.test.ts
+
+- **valid initialDir with restriction adds to allowedPaths** – verifies that a provided initial directory is normalized and added to `allowedPaths` when `restrictWorkingDirectory` is true.
+- **valid initialDir without restriction leaves allowedPaths unchanged** – ensures the path is normalized but not appended when restrictions are disabled.
+- **invalid initialDir logs warning and is unset** – an invalid path triggers a warning and the setting becomes `undefined`.
+- **initialDir omitted results in undefined** – confirms the default when no `initialDir` is specified.
+- **non-string initialDir logs warning and is unset** – non-string values produce a warning and are ignored.
+
+## tests/serverCwdInitialization.test.ts
+
+- **launch outside allowed paths leaves cwd undefined** – starting the server in a disallowed directory results in no active working directory.
+- **execute_command fails when cwd undefined** – commands without a workingDir return an error when no active directory is set.
+- **set_current_directory sets active cwd** – using the tool successfully changes the active directory and calls `process.chdir`.
+- **get_current_directory reports unset state** – retrieving the current directory before one is set returns a helpful message.
+- **initialDir sets active cwd when valid** – a valid `initialDir` is used at startup and becomes the active directory.
+- **initialDir chdir failure falls back to process.cwd()** – if changing to `initialDir` fails the server falls back to the process directory.
+- **initialDir not in allowedPaths leaves active cwd undefined** – when restrictions prevent using the configured `initialDir`, the active directory remains unset.
+
 ## tests/toolDescription.test.ts
 
 - **generates correct description with all shells enabled** – checks that the tool description lists every enabled shell and includes example blocks for each.

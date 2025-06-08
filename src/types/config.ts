@@ -6,6 +6,7 @@ export interface SecurityConfig {
   restrictWorkingDirectory: boolean;
   commandTimeout: number;
   enableInjectionProtection: boolean;
+  initialDir?: string;
 }
 
 export interface ShellConfig {

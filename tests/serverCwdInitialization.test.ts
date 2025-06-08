@@ -46,4 +46,37 @@ describe('Server active working directory initialization', () => {
     expect(res.content[0].text).toMatch(/not currently set/i);
     cwdSpy.mockRestore();
   });
+
+  test('initialDir sets active cwd when valid', () => {
+    const cwdSpy = jest.spyOn(process, 'cwd').mockReturnValue(OUTSIDE_DIR);
+    const chdirSpy = jest.spyOn(process, 'chdir').mockImplementation(() => {});
+    const config = buildTestConfig({ security: { allowedPaths: [ALLOWED_DIR], initialDir: ALLOWED_DIR, restrictWorkingDirectory: true } });
+    const server = new CLIServer(config);
+    expect(chdirSpy).toHaveBeenCalledWith(ALLOWED_DIR);
+    expect((server as any).serverActiveCwd).toBe(ALLOWED_DIR);
+    chdirSpy.mockRestore();
+    cwdSpy.mockRestore();
+  });
+
+  test('initialDir chdir failure falls back to process.cwd()', () => {
+    const cwdSpy = jest.spyOn(process, 'cwd').mockReturnValue(ALLOWED_DIR);
+    const chdirSpy = jest.spyOn(process, 'chdir').mockImplementation(() => { throw new Error('fail'); });
+    const config = buildTestConfig({ security: { allowedPaths: [ALLOWED_DIR], initialDir: 'C\\bad', restrictWorkingDirectory: true } });
+    const server = new CLIServer(config);
+    expect(chdirSpy).toHaveBeenCalledWith('C\\bad');
+    expect((server as any).serverActiveCwd).toBe(ALLOWED_DIR);
+    chdirSpy.mockRestore();
+    cwdSpy.mockRestore();
+  });
+
+  test('initialDir not in allowedPaths leaves active cwd undefined', () => {
+    const cwdSpy = jest.spyOn(process, 'cwd').mockReturnValue(OUTSIDE_DIR);
+    const chdirSpy = jest.spyOn(process, 'chdir').mockImplementation(() => {});
+    const config = buildTestConfig({ security: { allowedPaths: [ALLOWED_DIR], initialDir: 'C\\outside', restrictWorkingDirectory: true } });
+    const server = new CLIServer(config);
+    expect(chdirSpy).toHaveBeenCalledWith('C\\outside');
+    expect((server as any).serverActiveCwd).toBeUndefined();
+    chdirSpy.mockRestore();
+    cwdSpy.mockRestore();
+  });
 });

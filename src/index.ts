@@ -87,28 +87,51 @@ class CLIServer {
     this.allowedPaths = new Set(config.security.allowedPaths);
     this.blockedCommands = new Set(config.security.blockedCommands);
 
-    const launchDir = process.cwd();
-    const normalizedLaunchDir = normalizeWindowsPath(launchDir);
+    let candidateCwd: string | undefined = undefined;
+    let chdirFailed = false;
+    const startupMessages: string[] = [];
+
+    if (this.config.security.initialDir && typeof this.config.security.initialDir === 'string') {
+      try {
+        process.chdir(this.config.security.initialDir);
+        candidateCwd = this.config.security.initialDir;
+        startupMessages.push(`INFO: Successfully changed current working directory to configured initialDir: ${candidateCwd}`);
+      } catch (err: any) {
+        startupMessages.push(`ERROR: Failed to change directory to configured initialDir '${this.config.security.initialDir}': ${err?.message}. Falling back to process CWD.`);
+        chdirFailed = true;
+      }
+    }
+
+    if (!candidateCwd || chdirFailed) {
+      candidateCwd = normalizeWindowsPath(process.cwd());
+      if (chdirFailed) {
+        startupMessages.push(`INFO: Current working directory remains: ${candidateCwd}`);
+      }
+    }
+
     const restrictCwd = this.config.security.restrictWorkingDirectory;
     const allowedPathsDefined = this.config.security.allowedPaths && this.config.security.allowedPaths.length > 0;
+    const normalizedAllowedPathsFromConfig = this.config.security.allowedPaths.map(p => normalizeWindowsPath(p));
 
     if (restrictCwd && allowedPathsDefined) {
-      const isLaunchDirAllowed = isPathAllowed(normalizedLaunchDir, this.config.security.allowedPaths);
-      if (!isLaunchDirAllowed) {
+      const isCandidateCwdAllowed = isPathAllowed(candidateCwd!, normalizedAllowedPathsFromConfig);
+      if (!isCandidateCwdAllowed) {
         this.serverActiveCwd = undefined;
-        console.error(`INFO: Server started in directory: ${launchDir}`);
-        console.error("INFO: 'restrictWorkingDirectory' is enabled, and this directory is not in the configured 'allowedPaths'.");
-        console.error("INFO: The server's active working directory is currently NOT SET.");
-        console.error("INFO: To run commands that don't specify a 'workingDir', you must first set a valid working directory using the 'set_current_directory' tool.");
-        console.error(`INFO: Configured allowed paths are: ${this.config.security.allowedPaths.map(p => normalizeWindowsPath(p)).join(', ')}`);
+        startupMessages.push(`INFO: Server's effective starting directory: ${candidateCwd}`);
+        startupMessages.push("INFO: 'restrictWorkingDirectory' is enabled, and this directory is not in the configured 'allowedPaths'.");
+        startupMessages.push("INFO: The server's active working directory is currently NOT SET.");
+        startupMessages.push("INFO: To run commands that don't specify a 'workingDir', you must first set a valid working directory using the 'set_current_directory' tool.");
+        startupMessages.push(`INFO: Configured allowed paths are: ${normalizedAllowedPathsFromConfig.join(', ')}`);
       } else {
-        this.serverActiveCwd = normalizedLaunchDir;
-        console.error(`INFO: Server's active working directory initialized to: ${this.serverActiveCwd}.`);
+        this.serverActiveCwd = candidateCwd;
+        startupMessages.push(`INFO: Server's active working directory initialized to: ${this.serverActiveCwd}.`);
       }
     } else {
-      this.serverActiveCwd = normalizedLaunchDir;
-      console.error(`INFO: Server's active working directory initialized to: ${this.serverActiveCwd}.`);
+      this.serverActiveCwd = candidateCwd;
+      startupMessages.push(`INFO: Server's active working directory initialized to: ${this.serverActiveCwd}.`);
     }
+
+    startupMessages.forEach(msg => console.error(msg));
 
     this.setupHandlers();
   }
