@@ -1,13 +1,14 @@
 import { describe, test, expect, jest } from '@jest/globals';
 import { CLIServer } from '../src/index.js';
 import { DEFAULT_CONFIG, loadConfig } from '../src/utils/config.js';
+import { baseConfig } from './fixtures/configs.js';
 import { ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import fs from 'fs';
 import path from 'path';
 
 describe('Error Handling', () => {
   test('should handle malformed JSON-RPC requests', async () => {
-    const server = new CLIServer(DEFAULT_CONFIG);
+    const server = new CLIServer(baseConfig);
     await expect(
       server._executeTool({ name: 'execute_command', arguments: { shell: 'cmd' } })
     ).rejects.toEqual(

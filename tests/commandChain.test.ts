@@ -5,6 +5,7 @@ import { DEFAULT_CONFIG } from '../src/utils/config.js';
 import { mockWindowsPaths } from './helpers/pathHelpers.js';
 import { normalizeWindowsPath } from '../src/utils/validation.js';
 import { buildTestConfig } from './helpers/testUtils.js';
+import { testPaths } from './fixtures/testData.js';
 
 mockWindowsPaths();
 jest.mock('@modelcontextprotocol/sdk/server/index.js', () => {
@@ -28,7 +29,7 @@ let tempDir: string;
 let config: any;
 
 beforeAll(() => {
-  tempDir = '/c/win-cli-test';
+  tempDir = testPaths.tempDir;
   config = buildTestConfig({
     security: {
       ...DEFAULT_CONFIG.security, // Start with all defaults

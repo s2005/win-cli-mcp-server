@@ -4,6 +4,7 @@ import { MockCLIServer } from './helpers/MockCLIServer.js';
 import { DEFAULT_CONFIG } from '../src/utils/config.js';
 import { mockWindowsPaths } from './helpers/pathHelpers.js';
 import { buildTestConfig } from './helpers/testUtils.js';
+import { testPaths } from './fixtures/testData.js';
 
 mockWindowsPaths();
 
@@ -28,7 +29,7 @@ let tempDir: string;
 let baseConfig: any;
 
 beforeAll(() => {
-  tempDir = '/c/win-cli-test';
+  tempDir = testPaths.tempDir;
   baseConfig = buildTestConfig({
     security: {
       allowedPaths: [tempDir],
