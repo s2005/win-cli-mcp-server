@@ -19,8 +19,7 @@
     "allowedPaths": ["C:\\Users\\YourUsername", "C:\\Projects"],
     "restrictWorkingDirectory": true,
     "commandTimeout": 30,
-    "enableInjectionProtection": true,
-    "includeDefaultWSL": false
+    "enableInjectionProtection": true
   },
   "shells": {
     "powershell": {

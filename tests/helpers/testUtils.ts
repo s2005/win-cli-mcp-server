@@ -29,7 +29,7 @@ export function buildTestConfig(overrides: Partial<ServerConfig> = {}): ServerCo
       powershell: mergeShellConfig(DEFAULT_CONFIG.shells.powershell, overrides.shells?.powershell),
       cmd: mergeShellConfig(DEFAULT_CONFIG.shells.cmd, overrides.shells?.cmd),
       gitbash: mergeShellConfig(DEFAULT_CONFIG.shells.gitbash, overrides.shells?.gitbash),
-      ...(overrides.shells?.wsl || overrides.security?.includeDefaultWSL || DEFAULT_CONFIG.security.includeDefaultWSL ? {
+      ...(overrides.shells?.wsl ? {
         wsl: mergeShellConfig(DEFAULT_WSL_CONFIG, overrides.shells?.wsl)
       } : {})
     },
