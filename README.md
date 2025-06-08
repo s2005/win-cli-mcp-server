@@ -248,6 +248,21 @@ The configuration file is divided into two main sections: `security` and `shells
 
 #### Shell Configuration
 
+**Important Note:** Shells must be explicitly configured to be included. Only shells specified in your `config.json` will be available.
+
+Example minimal configuration enabling only Git Bash:
+```json
+{
+  "shells": {
+    "gitbash": {
+      "enabled": true,
+      "command": "C:\\Program Files\\Git\\usr\\bin\\bash.exe",
+      "args": ["-c"]
+    }
+  }
+}
+```
+
 ```json
 {
   "shells": {
