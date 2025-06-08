@@ -9,6 +9,20 @@ import fs from 'fs';
 
 const args = process.argv.slice(2);
 
+// Mock file system for 'ls' command emulation
+const mockFileSystem = {
+  '/tmp': [
+    // Mimicking 'ls -la /tmp' output structure for simplicity, even if not all details are used by tests
+    'total 0',
+    'drwxrwxrwt  2 root root  40 Jan  1 00:00 .',
+    'drwxr-xr-x 20 root root 480 Jan  1 00:00 ..'
+    // Add more mock files/dirs for /tmp if needed by other tests, e.g., 'somefile.txt'
+  ],
+  // Example: Add other mock paths as needed by tests
+  // '/mnt/c/Users/testuser/docs': ['document1.txt', 'report.pdf'],
+};
+
+
 // Handle WSL list distributions command
 if ((args.includes('-l') || args.includes('--list')) &&
     (args.includes('-v') || args.includes('--verbose'))) {
@@ -45,14 +59,29 @@ if (args[0] === '-e') {
       process.exit(0);
       break;
     case 'ls':
-      if (commandArgs.includes('/tmp')) {
-        console.log('total 0');
-        console.log('drwxrwxrwt  2 root root  40 Jan  1 00:00 .');
-        console.log('drwxr-xr-x 20 root root 480 Jan  1 00:00 ..');
-        process.exit(0);
-      } else if (commandArgs.includes('/mnt/c')) {
-        console.error(`ls: cannot access '${commandArgs.join(' ')}': No such file or directory`);
-        process.exit(2);
+      const pathArg = commandArgs.find(arg => arg.startsWith('/'));
+
+      if (pathArg) {
+        // Path argument provided, use mockFileSystem
+        if (mockFileSystem.hasOwnProperty(pathArg)) {
+          mockFileSystem[pathArg].forEach(item => console.log(item));
+          process.exit(0);
+        } else {
+          console.error(`ls: cannot access '${pathArg}': No such file or directory`);
+          process.exit(2);
+        }
+      } else {
+        // No path argument, list contents of process.cwd()
+        try {
+          const files = fs.readdirSync(process.cwd());
+          files.forEach(file => {
+            console.log(file); // Test 5.1.1 expects to find 'src'
+          });
+          process.exit(0);
+        } catch (e) {
+          console.error(`ls: cannot read directory '.': ${e.message}`);
+          process.exit(2);
+        }
       }
       break;
     case 'echo':
