@@ -58,40 +58,71 @@ jobs:
           $gitBashPathsToRemove = @(
             "C:\Program Files\Git\usr\bin",
             "C:\Program Files\Git\bin",
-            "C:\Program Files\Git\mingw64\bin"
-            # Add other specific Git-related paths if known and problematic
+            "C:\Program Files\Git\mingw64\bin",
+            "C:\mingw64\bin", # As seen in your logs
+            "C:\msys64\mingw64\bin", # Common MSYS2 path
+            "C:\msys64\usr\bin",      # Common MSYS2 path
+            "C:\ProgramData\Chocolatey\bin" # Chocolatey installs git to a path that might include shims
+            # Add any other paths you suspect might be providing bash tools
           )
-          $originalPath = $env:PATH
-          $pathSegments = $originalPath -split ';'
-          
+
+          # Get the current PATH, trim whitespace from each segment, remove empty segments, and then de-duplicate
+          $envPath = $env:PATH
+          $pathSegments = $envPath -split ';' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" } | Select-Object -Unique
+          $deduplicatedPath = $pathSegments -join ';'
+
+          Write-Host "De-duplicated Original PATH (first 300 chars): $($deduplicatedPath.Substring(0, [System.Math]::Min($deduplicatedPath.Length, 300)))"
+
           $newPathSegments = @()
-          foreach ($segment in $pathSegments) {
-            $isGitPath = $false
-            foreach ($gitPath in $gitBashPathsToRemove) {
-              if ($segment -eq $gitPath -or $segment.StartsWith($gitPath + "\")) {
-                $isGitPath = $true
+          # Iterate over the de-duplicated path segments
+          foreach ($segment in ($deduplicatedPath -split ';')) {
+            $isPathToRemove = $false
+            foreach ($pathPatternToRemove in $gitBashPathsToRemove) {
+              # Normalize both paths for comparison: trim trailing slashes/backslashes
+              $normalizedSegment = $segment.TrimEnd('\', '/')
+              $normalizedPathPattern = $pathPatternToRemove.TrimEnd('\', '/')
+              
+              # Case-insensitive comparison for equality
+              if ($normalizedSegment.Equals($normalizedPathPattern, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $isPathToRemove = $true
+                Write-Host "Removing path due to exact match: $segment (matched $pathPatternToRemove)"
                 break
               }
             }
-            if (-not $isGitPath) {
+            
+            if (-not $isPathToRemove) {
               $newPathSegments += $segment
             }
           }
           $newPath = $newPathSegments -join ';'
-          
-          Write-Host "Original PATH (first 300 chars): $($originalPath.Substring(0, [System.Math]::Min($originalPath.Length, 300)))"
-          Write-Host "New PATH (first 300 chars): $($newPath.Substring(0, [System.Math]::Min($newPath.Length, 300)))"
+
+          if ($newPath.Length -lt $deduplicatedPath.Length) {
+              Write-Host "PATH has been modified. Some paths were removed."
+          } else {
+              Write-Host "PATH was not significantly changed. This might be okay if no targeted paths were present, or it might mean the paths to remove need adjustment."
+          }
+
+          Write-Host "Final New PATH to be set (first 300 chars): $($newPath.Substring(0, [System.Math]::Min($newPath.Length, 300)))"
           echo "PATH=$newPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Verify PATH (Post-Modification)
         shell: pwsh
         run: |
           Write-Host "Current PATH in this step (first 300 chars): $($env:PATH.Substring(0, [System.Math]::Min($env:PATH.Length, 300)))"
-          # Attempt to find a git bash specific command, it should not be found
-          $lsLocation = Get-Command ls -ErrorAction SilentlyContinue
-          if ($null -eq $lsLocation) {
-            Write-Host "'ls' command not found in PATH, as expected."
+
+          # Attempt to find 'ls.exe' (from Git Bash), it should not be found.
+          $lsExeLocation = Get-Command ls.exe -ErrorAction SilentlyContinue
+          if ($null -eq $lsExeLocation) {
+            Write-Host "'ls.exe' (Git Bash) command not found in PATH, as expected."
           } else {
-            Write-Host "'ls' command IS STILL FOUND at $($lsLocation.Source). PATH modification might need adjustment."
+            Write-Host "'ls.exe' (Git Bash) command IS STILL FOUND at $($lsExeLocation.Source). PATH modification might need further adjustment."
+          }
+
+          # For completeness, show that PowerShell's 'ls' alias is still there
+          $psLsAlias = Get-Command ls -CommandType Alias -ErrorAction SilentlyContinue
+          if ($null -ne $psLsAlias) {
+            Write-Host "PowerShell's 'ls' alias (for Get-ChildItem) is still available (Source: $($psLsAlias.Source)), as expected."
+          } else {
+            Write-Host "PowerShell's 'ls' alias not found. This is unexpected."
           }
       - name: Test
         run: npm test
