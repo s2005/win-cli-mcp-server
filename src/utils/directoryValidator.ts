@@ -40,7 +40,10 @@ export function validateDirectories(directories: string[], allowedPaths: string[
  * Validates directories and throws an error if any are not allowed
  * @param directories List of directories to validate
  * @param allowedPaths List of allowed paths
- * @throws McpError if any directory is not allowed
+ * @throws McpError with detailed message including:
+ *   - Which directories are invalid
+ *   - What the allowed paths are
+ *   - Clear indication that commands cannot execute
  */
 export function validateDirectoriesAndThrow(directories: string[], allowedPaths: string[]): void {
   const result = validateDirectories(directories, allowedPaths);
