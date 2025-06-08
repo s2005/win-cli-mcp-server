@@ -120,9 +120,46 @@ jobs:
           # For completeness, show that PowerShell's 'ls' alias is still there
           $psLsAlias = Get-Command ls -CommandType Alias -ErrorAction SilentlyContinue
           if ($null -ne $psLsAlias) {
-            Write-Host "PowerShell's 'ls' alias (for Get-ChildItem) is still available (Source: $($psLsAlias.Source)), as expected."
+            Write-Host "PowerShell's 'ls' alias (for Get-ChildItem) is still available (Source: $($psLsAlias.Source)), as expected at this stage."
           } else {
-            Write-Host "PowerShell's 'ls' alias not found. This is unexpected."
+            Write-Host "PowerShell's 'ls' alias not found. This is unexpected at this stage."
+          }
+
+      - name: Temporarily Remove PowerShell 'ls' Alias
+        shell: pwsh
+        run: |
+          Write-Host "Attempting to remove PowerShell 'ls' alias..."
+          $lsAlias = Get-Command ls -CommandType Alias -ErrorAction SilentlyContinue
+          if ($null -ne $lsAlias) {
+            Remove-Item alias:ls -Force -ErrorAction SilentlyContinue
+            $lsAliasAfterRemove = Get-Command ls -CommandType Alias -ErrorAction SilentlyContinue
+            if ($null -eq $lsAliasAfterRemove) {
+              Write-Host "PowerShell 'ls' alias successfully removed for this session."
+            } else {
+              Write-Host "WARNING: Failed to remove PowerShell 'ls' alias or it was re-established."
+            }
+          } else {
+            Write-Host "PowerShell 'ls' alias was not found initially (this is unexpected if previous step showed it)."
+          }
+
+      - name: Verify PowerShell 'ls' Alias Removed
+        shell: pwsh
+        run: |
+          Write-Host "Verifying PowerShell 'ls' alias removal..."
+          $lsAliasCheck = Get-Command ls -CommandType Alias -ErrorAction SilentlyContinue
+          if ($null -eq $lsAliasCheck) {
+            Write-Host "Verification successful: PowerShell 'ls' alias is NOT found."
+          } else {
+            Write-Host "VERIFICATION FAILED: PowerShell 'ls' alias IS STILL FOUND (Source: $($lsAliasCheck.Source))."
+            Write-Host "Tests might still use PowerShell's Get-ChildItem via 'ls'."
+          }
+          # Re-check for ls.exe as well, just to be thorough
+          $lsExeLocation = Get-Command ls.exe -ErrorAction SilentlyContinue
+          if ($null -eq $lsExeLocation) {
+            Write-Host "'ls.exe' (Git Bash) command also remains not found in PATH, as expected."
+          } else {
+            Write-Host "WARNING: 'ls.exe' (Git Bash) command IS NOW FOUND at $($lsExeLocation.Source). This is unexpected."
           }
       - name: Test
+        shell: cmd
         run: npm test
