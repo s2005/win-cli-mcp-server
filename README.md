@@ -398,12 +398,32 @@ npx @modelcontextprotocol/inspector -- node dist/index.js --config tests/config.
 ## Development and Testing
 
 This project requires **Node.js 18 or later**.
-Install the dependencies and run the test suite with:
+
+### Running Tests
 
 ```bash
+# Install dependencies
 npm install
+
+# Run all tests
 npm test
+
+# Run specific test suites
+npm run test:validation    # Path validation tests
+npm run test:wsl          # WSL emulation tests
+npm run test:integration  # Integration tests
+npm run test:async        # Async operation tests
+
+# Run tests with coverage
+npm run test:coverage
+
+# Debug open handles
+npm run test:debug
 ```
+
+### Cross-Platform Testing
+
+The project uses a Node.js-based WSL emulator (`scripts/wsl-emulator.js`) to enable testing of WSL functionality on all platforms. This allows the test suite to run successfully on both Windows and Linux environments.
 
 ## License
 

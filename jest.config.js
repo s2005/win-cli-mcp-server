@@ -14,4 +14,11 @@ export default {
       },
     ],
   },
+  testTimeout: 10000,
+  verbose: true,
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    '/dist/',
+    '/scripts/wsl.sh'
+  ]
 };
