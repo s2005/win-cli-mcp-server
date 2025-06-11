@@ -2,147 +2,17 @@
 
 ## Overview and Problem Statement
 
-With the new inheritance-based configuration structure defined in Task 01, we need to implement the logic to load configurations in both legacy and new formats, automatically migrate legacy configurations, and properly merge global defaults with shell-specific overrides. This ensures backward compatibility while enabling the new flexible configuration system.
+With the new inheritance-based configuration structure defined in Task 01, we need to implement the logic to load configurations and properly merge global defaults with shell-specific overrides. This enables the new flexible configuration system.
 
 ### Current Issues
 
 - Configuration loader only handles flat structure
 - No mechanism to merge global settings with shell overrides
-- No automatic migration from legacy to new format
 - Array merging strategy (append vs replace) is not defined
 
 ## Technical Implementation Details
 
-### 1. Create Configuration Migration Utilities
-
-Create `src/utils/configMigration.ts`:
-
-```typescript
-import type { 
-  ServerConfig, 
-  LegacyServerConfig, 
-  GlobalConfig,
-  BaseShellConfig,
-  WslShellConfig,
-  LegacyShellConfig 
-} from '../types/config.js';
-import { isLegacyConfig } from './configTypes.js';
-
-/**
- * Migrates legacy configuration to new inheritance-based format
- */
-export function migrateLegacyConfig(legacy: LegacyServerConfig): ServerConfig {
-  // Extract global settings from legacy security config
-  const global: GlobalConfig = {
-    security: {
-      maxCommandLength: legacy.security.maxCommandLength,
-      commandTimeout: legacy.security.commandTimeout,
-      enableInjectionProtection: legacy.security.enableInjectionProtection,
-      restrictWorkingDirectory: legacy.security.restrictWorkingDirectory
-    },
-    restrictions: {
-      blockedCommands: legacy.security.blockedCommands || [],
-      blockedArguments: legacy.security.blockedArguments || [],
-      blockedOperators: [] // Will be populated from first shell's blockedOperators
-    },
-    paths: {
-      allowedPaths: legacy.security.allowedPaths || [],
-      initialDir: legacy.security.initialDir
-    }
-  };
-
-  // Find common blocked operators across all shells
-  const allBlockedOperators = Object.values(legacy.shells)
-    .filter(shell => shell?.blockedOperators)
-    .map(shell => shell!.blockedOperators!);
-  
-  if (allBlockedOperators.length > 0) {
-    // Use intersection of all shell operators as global default
-    global.restrictions.blockedOperators = allBlockedOperators[0].filter(op =>
-      allBlockedOperators.every(ops => ops.includes(op))
-    );
-  }
-
-  // Migrate shells
-  const shells: ServerConfig['shells'] = {};
-
-  // Migrate each shell
-  for (const [shellName, legacyShell] of Object.entries(legacy.shells)) {
-    if (!legacyShell) continue;
-
-    const baseShell: BaseShellConfig = {
-      enabled: legacyShell.enabled,
-      executable: {
-        command: legacyShell.command,
-        args: legacyShell.args
-      },
-      validatePath: legacyShell.validatePath
-    };
-
-    // Check for shell-specific overrides
-    const overrides: any = {};
-
-    // Check for shell-specific blocked operators
-    if (legacyShell.blockedOperators && 
-        JSON.stringify(legacyShell.blockedOperators) !== JSON.stringify(global.restrictions.blockedOperators)) {
-      overrides.restrictions = {
-        blockedOperators: legacyShell.blockedOperators
-      };
-    }
-
-    // Special handling for WSL
-    if (shellName === 'wsl' && (legacyShell.allowedPaths || legacyShell.wslMountPoint || legacyShell.inheritGlobalPaths !== undefined)) {
-      const wslShell: WslShellConfig = {
-        ...baseShell,
-        wslConfig: {
-          mountPoint: legacyShell.wslMountPoint || '/mnt/',
-          inheritGlobalPaths: legacyShell.inheritGlobalPaths !== false,
-          pathMapping: {
-            enabled: true,
-            windowsToWsl: true
-          }
-        }
-      };
-
-      // WSL-specific path overrides
-      if (legacyShell.allowedPaths) {
-        overrides.paths = {
-          allowedPaths: legacyShell.allowedPaths
-        };
-      }
-
-      if (Object.keys(overrides).length > 0) {
-        wslShell.overrides = overrides;
-      }
-
-      shells.wsl = wslShell;
-    } else {
-      // Standard shell
-      if (Object.keys(overrides).length > 0) {
-        baseShell.overrides = overrides;
-      }
-      
-      shells[shellName as keyof typeof shells] = baseShell;
-    }
-  }
-
-  return { global, shells };
-}
-
-/**
- * Auto-detect and migrate configuration if needed
- */
-export function normalizeConfiguration(config: any): ServerConfig {
-  if (isLegacyConfig(config)) {
-    console.warn('Legacy configuration detected. Automatically migrating to new format.');
-    console.warn('Please update your configuration file to use the new format.');
-    return migrateLegacyConfig(config);
-  }
-  return config as ServerConfig;
-}
-```
-
-### 2. Implement Configuration Merger
+### 1. Implement Configuration Merger
 
 Create `src/utils/configMerger.ts`:
 
@@ -307,12 +177,11 @@ export function applyWslPathInheritance(
 }
 ```
 
-### 3. Update Configuration Loader
+### 2. Update Configuration Loader
 
 Update `src/utils/config.ts` (key changes only):
 
 ```typescript
-import { normalizeConfiguration } from './configMigration.js';
 import { resolveShellConfiguration, applyWslPathInheritance } from './configMerger.js';
 import type { ServerConfig, ResolvedShellConfig } from '../types/config.js';
 
@@ -376,31 +245,30 @@ export const DEFAULT_CONFIG: ServerConfig = {
 export function loadConfig(configPath?: string): ServerConfig {
   // ... existing file loading logic ...
   
-  // After loading, normalize the configuration
-  const normalizedConfig = normalizeConfiguration(loadedConfig);
+  const config = loadedConfig as ServerConfig;
   
   // Validate and process paths
-  if (normalizedConfig.global.paths.initialDir) {
-    const normalizedInitialDir = normalizeWindowsPath(normalizedConfig.global.paths.initialDir);
+  if (config.global.paths.initialDir) {
+    const normalizedInitialDir = normalizeWindowsPath(config.global.paths.initialDir);
     if (fs.existsSync(normalizedInitialDir) && fs.statSync(normalizedInitialDir).isDirectory()) {
-      normalizedConfig.global.paths.initialDir = normalizedInitialDir;
-      if (normalizedConfig.global.security.restrictWorkingDirectory) {
-        if (!normalizedConfig.global.paths.allowedPaths.includes(normalizedInitialDir)) {
-          normalizedConfig.global.paths.allowedPaths.push(normalizedInitialDir);
+      config.global.paths.initialDir = normalizedInitialDir;
+      if (config.global.security.restrictWorkingDirectory) {
+        if (!config.global.paths.allowedPaths.includes(normalizedInitialDir)) {
+          config.global.paths.allowedPaths.push(normalizedInitialDir);
         }
       }
     } else {
-      console.warn(`WARN: Configured initialDir '${normalizedConfig.global.paths.initialDir}' does not exist.`);
-      normalizedConfig.global.paths.initialDir = undefined;
+      console.warn(`WARN: Configured initialDir '${config.global.paths.initialDir}' does not exist.`);
+      config.global.paths.initialDir = undefined;
     }
   }
   
   // Normalize allowed paths
-  normalizedConfig.global.paths.allowedPaths = normalizeAllowedPaths(
-    normalizedConfig.global.paths.allowedPaths
+  config.global.paths.allowedPaths = normalizeAllowedPaths(
+    config.global.paths.allowedPaths
   );
   
-  return normalizedConfig;
+  return config;
 }
 
 /**
@@ -428,97 +296,7 @@ export function getResolvedShellConfig(
 
 ## Working Examples
 
-### Example 1: Legacy Configuration Migration
-
-Input (legacy format):
-
-```json
-{
-  "security": {
-    "maxCommandLength": 1500,
-    "blockedCommands": ["rm", "format"],
-    "blockedArguments": ["--force"],
-    "allowedPaths": ["C:\\Work"],
-    "restrictWorkingDirectory": true,
-    "commandTimeout": 45,
-    "enableInjectionProtection": true
-  },
-  "shells": {
-    "cmd": {
-      "enabled": true,
-      "command": "cmd.exe",
-      "args": ["/c"],
-      "blockedOperators": ["&", "|"]
-    },
-    "wsl": {
-      "enabled": true,
-      "command": "wsl.exe",
-      "args": ["-e"],
-      "blockedOperators": ["&", "|", ";"],
-      "allowedPaths": ["/home/user"],
-      "wslMountPoint": "/mnt/",
-      "inheritGlobalPaths": true
-    }
-  }
-}
-```
-
-Output (migrated format):
-
-```json
-{
-  "global": {
-    "security": {
-      "maxCommandLength": 1500,
-      "commandTimeout": 45,
-      "enableInjectionProtection": true,
-      "restrictWorkingDirectory": true
-    },
-    "restrictions": {
-      "blockedCommands": ["rm", "format"],
-      "blockedArguments": ["--force"],
-      "blockedOperators": ["&", "|"]
-    },
-    "paths": {
-      "allowedPaths": ["C:\\Work"]
-    }
-  },
-  "shells": {
-    "cmd": {
-      "enabled": true,
-      "executable": {
-        "command": "cmd.exe",
-        "args": ["/c"]
-      }
-    },
-    "wsl": {
-      "enabled": true,
-      "executable": {
-        "command": "wsl.exe",
-        "args": ["-e"]
-      },
-      "wslConfig": {
-        "mountPoint": "/mnt/",
-        "inheritGlobalPaths": true,
-        "pathMapping": {
-          "enabled": true,
-          "windowsToWsl": true
-        }
-      },
-      "overrides": {
-        "restrictions": {
-          "blockedOperators": ["&", "|", ";"]
-        },
-        "paths": {
-          "allowedPaths": ["/home/user"]
-        }
-      }
-    }
-  }
-}
-```
-
-### Example 2: Shell Configuration Resolution
+### Example: Shell Configuration Resolution
 
 Given global config and shell with overrides:
 
@@ -548,156 +326,7 @@ const resolved = resolveShellConfiguration(config.global, config.shells.wsl);
 
 ## Unit Test Requirements
 
-### 1. Create `tests/utils/configMigration.test.ts`
-
-```typescript
-import { describe, test, expect } from '@jest/globals';
-import { migrateLegacyConfig, normalizeConfiguration } from '../../src/utils/configMigration';
-import type { LegacyServerConfig, ServerConfig } from '../../src/types/config';
-
-describe('Config Migration', () => {
-  describe('migrateLegacyConfig', () => {
-    test('migrates basic legacy config', () => {
-      const legacy: LegacyServerConfig = {
-        security: {
-          maxCommandLength: 1000,
-          blockedCommands: ['rm'],
-          blockedArguments: ['--force'],
-          allowedPaths: ['C:\\test'],
-          restrictWorkingDirectory: true,
-          commandTimeout: 30,
-          enableInjectionProtection: true
-        },
-        shells: {
-          cmd: {
-            enabled: true,
-            command: 'cmd.exe',
-            args: ['/c'],
-            blockedOperators: ['&', '|']
-          }
-        }
-      };
-
-      const migrated = migrateLegacyConfig(legacy);
-      
-      expect(migrated.global.security.maxCommandLength).toBe(1000);
-      expect(migrated.global.restrictions.blockedCommands).toEqual(['rm']);
-      expect(migrated.shells.cmd?.executable.command).toBe('cmd.exe');
-    });
-
-    test('migrates WSL-specific configuration', () => {
-      const legacy: LegacyServerConfig = {
-        security: {
-          maxCommandLength: 2000,
-          blockedCommands: [],
-          blockedArguments: [],
-          allowedPaths: ['C:\\'],
-          restrictWorkingDirectory: false,
-          commandTimeout: 30,
-          enableInjectionProtection: true
-        },
-        shells: {
-          wsl: {
-            enabled: true,
-            command: 'wsl.exe',
-            args: ['-e'],
-            blockedOperators: ['&'],
-            allowedPaths: ['/home'],
-            wslMountPoint: '/mnt/',
-            inheritGlobalPaths: true
-          }
-        }
-      };
-
-      const migrated = migrateLegacyConfig(legacy);
-      const wsl = migrated.shells.wsl;
-      
-      expect(wsl?.wslConfig?.mountPoint).toBe('/mnt/');
-      expect(wsl?.wslConfig?.inheritGlobalPaths).toBe(true);
-      expect(wsl?.overrides?.paths?.allowedPaths).toEqual(['/home']);
-    });
-
-    test('extracts common blocked operators', () => {
-      const legacy: LegacyServerConfig = {
-        security: {
-          maxCommandLength: 2000,
-          blockedCommands: [],
-          blockedArguments: [],
-          allowedPaths: [],
-          restrictWorkingDirectory: false,
-          commandTimeout: 30,
-          enableInjectionProtection: true
-        },
-        shells: {
-          cmd: {
-            enabled: true,
-            command: 'cmd.exe',
-            args: ['/c'],
-            blockedOperators: ['&', '|', ';']
-          },
-          powershell: {
-            enabled: true,
-            command: 'powershell.exe',
-            args: ['-Command'],
-            blockedOperators: ['&', '|', '`']
-          }
-        }
-      };
-
-      const migrated = migrateLegacyConfig(legacy);
-      
-      // Common operators are & and |
-      expect(migrated.global.restrictions.blockedOperators).toEqual(['&', '|']);
-      // CMD has different operator (;)
-      expect(migrated.shells.cmd?.overrides?.restrictions?.blockedOperators).toEqual(['&', '|', ';']);
-      // PowerShell has different operator (`)
-      expect(migrated.shells.powershell?.overrides?.restrictions?.blockedOperators).toEqual(['&', '|', '`']);
-    });
-  });
-
-  describe('normalizeConfiguration', () => {
-    test('passes through new format unchanged', () => {
-      const newConfig: ServerConfig = {
-        global: {
-          security: { maxCommandLength: 1000, commandTimeout: 30, enableInjectionProtection: true, restrictWorkingDirectory: true },
-          restrictions: { blockedCommands: [], blockedArguments: [], blockedOperators: [] },
-          paths: { allowedPaths: [] }
-        },
-        shells: {}
-      };
-
-      const normalized = normalizeConfiguration(newConfig);
-      expect(normalized).toEqual(newConfig);
-    });
-
-    test('migrates legacy format with warning', () => {
-      const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
-      
-      const legacy = {
-        security: {
-          maxCommandLength: 1000,
-          blockedCommands: [],
-          blockedArguments: [],
-          allowedPaths: [],
-          restrictWorkingDirectory: true,
-          commandTimeout: 30,
-          enableInjectionProtection: true
-        },
-        shells: {}
-      };
-
-      const normalized = normalizeConfiguration(legacy);
-      
-      expect(normalized.global).toBeDefined();
-      expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('Legacy configuration detected'));
-      
-      consoleWarnSpy.mockRestore();
-    });
-  });
-});
-```
-
-### 2. Create `tests/utils/configMerger.test.ts`
+### 1. Create `tests/utils/configMerger.test.ts`
 
 ```typescript
 import { describe, test, expect } from '@jest/globals';
@@ -897,9 +526,9 @@ describe('Config Merger', () => {
 });
 ```
 
-### 3. Update Existing Tests
+### 2. Update Existing Tests
 
-Any tests that create or use configurations need to be updated to use either the new format or be wrapped with the migration function.
+Any tests that create or use configurations need to be updated to use the new format.
 
 ## Documentation Updates
 
@@ -1088,16 +717,14 @@ Example:
 
 ### Phase 1: Core Implementation
 
-1. Implement configuration migration utilities
-2. Implement configuration merger with array strategies
-3. Update configuration loader to handle both formats
+1. Implement configuration merger with array strategies
+2. Update configuration loader to handle new format
 
 ### Phase 2: Testing
 
-1. Create comprehensive tests for migration logic
-2. Test all merge strategies
-3. Test WSL path inheritance
-4. Validate backward compatibility
+1. Test all merge strategies
+2. Test WSL path inheritance
+3. Validate configuration loading
 
 ### Phase 3: Integration
 
@@ -1109,8 +736,6 @@ Example:
 
 ### Functional Requirements
 
-- [ ] Legacy configurations are automatically detected and migrated
-- [ ] Migration preserves all settings in correct locations
 - [ ] Global settings are properly merged with shell overrides
 - [ ] Array merge strategies work as specified (append for commands/args, replace for operators/paths)
 - [ ] WSL path inheritance converts and merges paths correctly
@@ -1118,15 +743,12 @@ Example:
 
 ### Technical Requirements
 
-- [ ] No breaking changes for existing code using configs
-- [ ] Migration warnings are logged to console
 - [ ] Type-safe configuration merging
 - [ ] Efficient merging without deep cloning issues
 - [ ] Proper handling of undefined/null values in overrides
 
 ### Testing Requirements
 
-- [ ] 100% test coverage for migration logic
 - [ ] 100% test coverage for merge strategies
 - [ ] Tests for all edge cases (empty arrays, undefined values)
 - [ ] Tests for WSL-specific path inheritance
@@ -1136,7 +758,6 @@ Example:
 
 - [ ] config.sample.json updated to new format
 - [ ] Merge behavior documented clearly
-- [ ] Migration guide includes common scenarios
 - [ ] Code comments explain merge strategies
 
 ## Risk Assessment
@@ -1151,11 +772,3 @@ Example:
 
 3. **Risk**: Array merge strategies may confuse users
    - **Mitigation**: Clear documentation with examples
-
-### Compatibility Risks
-
-1. **Risk**: Migration may lose or misplace settings
-   - **Mitigation**: Extensive testing with real configurations
-
-2. **Risk**: Code expecting flat config structure breaks
-   - **Mitigation**: Keep legacy interfaces during transition

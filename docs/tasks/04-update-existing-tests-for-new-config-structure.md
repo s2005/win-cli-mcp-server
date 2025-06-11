@@ -2,12 +2,12 @@
 
 ## Overview and Problem Statement
 
-All existing unit tests are written for the legacy flat configuration structure. With the new inheritance-based configuration, these tests will fail because they expect the old structure. We need to systematically update all existing tests to work with the new configuration format while maintaining the same test coverage and ensuring no functionality is lost.
+All existing unit tests are written for the flat configuration structure. With the new inheritance-based configuration, these tests need to be updated to work with the new configuration format while maintaining the same test coverage and ensuring no functionality is lost.
 
 ### Current Issues
 
 - Tests create configurations using old `security` top-level structure
-- Test helpers like `buildTestConfig` return legacy format
+- Test helpers like `buildTestConfig` return old format
 - Mock configurations in tests use flat structure
 - Tests directly access `config.security` instead of resolved shell configs
 - No tests validate the new inheritance and override behavior
@@ -90,34 +90,6 @@ export function buildShellConfig(
 }
 
 /**
- * Create a legacy configuration for migration testing
- */
-export function buildLegacyConfig(overrides: any = {}): any {
-  return {
-    security: {
-      maxCommandLength: 2000,
-      blockedCommands: ['rm', 'del'],
-      blockedArguments: ['--exec'],
-      allowedPaths: ['C:\\test'],
-      restrictWorkingDirectory: true,
-      commandTimeout: 30,
-      enableInjectionProtection: true,
-      ...overrides.security
-    },
-    shells: {
-      cmd: {
-        enabled: true,
-        command: 'cmd.exe',
-        args: ['/c'],
-        blockedOperators: ['&', '|'],
-        ...overrides.shells?.cmd
-      },
-      ...overrides.shells
-    }
-  };
-}
-
-/**
  * Helper type for deep partial
  */
 type DeepPartial<T> = T extends object ? {
@@ -172,7 +144,6 @@ Update `tests/configNormalization.test.ts`:
 ```typescript
 import { describe, test, expect } from '@jest/globals';
 import { loadConfig, DEFAULT_CONFIG } from '../src/utils/config.js';
-import { normalizeConfiguration } from '../src/utils/configMigration.js';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -222,43 +193,6 @@ describe('Config Normalization', () => {
     expect(cfg.shells.cmd?.executable.command).toBe('cmd.exe');
 
     fs.rmSync(path.dirname(configPath), { recursive: true, force: true });
-  });
-
-  test('loadConfig auto-migrates legacy format', () => {
-    const legacyConfig = {
-      security: {
-        maxCommandLength: 1000,
-        blockedCommands: ['del'],
-        blockedArguments: ['--force'],
-        allowedPaths: ['C:\\Legacy'],
-        restrictWorkingDirectory: true,
-        commandTimeout: 30,
-        enableInjectionProtection: true
-      },
-      shells: {
-        powershell: {
-          enabled: false,
-          command: 'powershell.exe',
-          args: ['-Command'],
-          blockedOperators: ['&']
-        }
-      }
-    };
-
-    const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
-    const configPath = createTempConfig(legacyConfig);
-    const cfg = loadConfig(configPath);
-
-    // Check migration happened
-    expect(cfg.global).toBeDefined();
-    expect(cfg.global.security.maxCommandLength).toBe(1000);
-    expect(cfg.global.restrictions.blockedCommands).toContain('del');
-    expect(cfg.global.paths.allowedPaths).toContain('c:\\legacy'); // normalized
-    
-    expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('Legacy configuration detected'));
-
-    fs.rmSync(path.dirname(configPath), { recursive: true, force: true });
-    consoleWarnSpy.mockRestore();
   });
 
   test('path normalization works with new structure', () => {
@@ -467,93 +401,21 @@ describe('Server CWD Initialization', () => {
 });
 ```
 
-### 7. Create Migration Test Suite
+### 7. Update Test Coverage
 
-Create `tests/migration/fullMigration.test.ts`:
+Update tests to cover:
 
-```typescript
-import { describe, test, expect } from '@jest/globals';
-import { CLIServer } from '../../src/index.js';
-import { buildLegacyConfig, buildTestConfig } from '../helpers/testUtils.js';
-import { normalizeConfiguration } from '../../src/utils/configMigration.js';
-import { getResolvedShellConfig } from '../../src/utils/config.js';
-
-describe('Full Migration Testing', () => {
-  test('server works with auto-migrated legacy config', () => {
-    const legacyConfig = buildLegacyConfig({
-      security: {
-        maxCommandLength: 1500,
-        blockedCommands: ['format', 'del'],
-        allowedPaths: ['C:\\Test'],
-        commandTimeout: 45
-      },
-      shells: {
-        cmd: {
-          enabled: true,
-          command: 'cmd.exe',
-          args: ['/c'],
-          blockedOperators: ['&', '|', ';']
-        }
-      }
-    });
-
-    // Migrate config
-    const migrated = normalizeConfiguration(legacyConfig);
-    
-    // Verify structure
-    expect(migrated.global).toBeDefined();
-    expect(migrated.global.security.maxCommandLength).toBe(1500);
-    expect(migrated.global.restrictions.blockedCommands).toEqual(['format', 'del']);
-    
-    // Get resolved config for shell
-    const resolved = getResolvedShellConfig(migrated, 'cmd');
-    expect(resolved).not.toBeNull();
-    expect(resolved!.restrictions.blockedOperators).toEqual(['&', '|', ';']);
-    
-    // Verify server can initialize
-    expect(() => new CLIServer(migrated)).not.toThrow();
-  });
-
-  test('validates backward compatibility for all features', () => {
-    const legacyConfig = buildLegacyConfig({
-      security: {
-        initialDir: 'C:\\InitDir',
-        blockedCommands: ['rm'],
-        blockedArguments: ['--force'],
-        enableInjectionProtection: false
-      },
-      shells: {
-        wsl: {
-          enabled: true,
-          command: 'wsl.exe',
-          args: ['-e'],
-          blockedOperators: ['&'],
-          allowedPaths: ['/home/user'],
-          wslMountPoint: '/mnt/',
-          inheritGlobalPaths: true
-        }
-      }
-    });
-
-    const migrated = normalizeConfiguration(legacyConfig);
-    
-    // Check WSL-specific migration
-    expect(migrated.shells.wsl?.wslConfig).toBeDefined();
-    expect(migrated.shells.wsl?.wslConfig?.mountPoint).toBe('/mnt/');
-    expect(migrated.shells.wsl?.overrides?.paths?.allowedPaths).toEqual(['/home/user']);
-    
-    // Check security settings migration
-    expect(migrated.global.security.enableInjectionProtection).toBe(false);
-    expect(migrated.global.paths.initialDir).toBe('C:\\InitDir');
-  });
-});
-```
+- Configuration loading and validation
+- Shell override merging behavior
+- Validation context creation
+- Resolved configuration generation
+- WSL-specific configurations
 
 ## Working Examples
 
 ### Example: Updated Test Configuration
 
-Before (Legacy):
+Before (Old):
 
 ```typescript
 const config = {
@@ -647,7 +509,7 @@ The following test files need updates:
 - `tests/validation.test.ts` - Use validation context
 - `tests/commandChain.test.ts` - Use new config structure
 - `tests/commandSettings.test.ts` - Use resolved configs
-- `tests/configNormalization.test.ts` - Test both formats
+- `tests/configNormalization.test.ts` - Test new config format
 - `tests/serverCwdInitialization.test.ts` - New paths structure
 - `tests/conditionalShells.test.ts` - New shell structure
 - `tests/errorHandling.test.ts` - Updated error paths
@@ -673,11 +535,11 @@ For each test file:
 
 Add tests for:
 
-- Configuration migration from legacy to new format
+- Configuration loading and validation
 - Shell override merging behavior
 - Validation context creation
 - Resolved configuration generation
-- WSL path inheritance with new structure
+- WSL-specific configurations
 
 ## Documentation Updates
 
@@ -715,15 +577,6 @@ Create validation contexts for shell-specific validation:
 ```typescript
 const resolved = getResolvedShellConfig(config, 'cmd');
 const context = createValidationContext('cmd', resolved);
-```
-
-### Legacy Config Testing
-
-Use `buildLegacyConfig` for migration tests:
-
-```typescript
-const legacy = buildLegacyConfig({ /* old format */ });
-const migrated = normalizeConfiguration(legacy);
 ```
 
 ## Test Patterns
@@ -767,10 +620,9 @@ Add to `CONTRIBUTING.md`:
 When writing tests:
 
 1. Use `buildTestConfig()` helper for new format configs
-2. Use `buildLegacyConfig()` only for migration testing
-3. Create validation contexts for validation tests
-4. Test both global defaults and shell overrides
-5. Include tests for configuration migration
+2. Create validation contexts for validation tests
+3. Test both global defaults and shell overrides
+4. Include comprehensive configuration tests
 
 Example test structure:
 
@@ -808,11 +660,11 @@ describe('My Feature', () => {
 
 1. Update all integration test configs
 2. Update test assertions
-3. Add migration integration tests
+3. Add comprehensive integration tests
 
 ### Phase 4: Add New Test Coverage
 
-1. Add configuration migration tests
+1. Add configuration validation tests
 2. Add override behavior tests
 3. Add validation context tests
 
@@ -822,14 +674,13 @@ describe('My Feature', () => {
 
 - [ ] All existing tests pass with new configuration structure
 - [ ] Test coverage remains at or above previous levels
-- [ ] Legacy configuration tests verify migration works correctly
 - [ ] New inheritance behavior is properly tested
 - [ ] Shell-specific validation is tested for each shell type
 
 ### Technical Requirements
 
 - [ ] Test helpers use new configuration structure
-- [ ] No hardcoded legacy configuration remains in tests
+- [ ] No hardcoded old configuration remains in tests
 - [ ] Mock implementations use resolved configurations
 - [ ] Validation tests use proper contexts
 - [ ] Integration tests reflect real-world usage
@@ -837,7 +688,7 @@ describe('My Feature', () => {
 ### Testing Requirements
 
 - [ ] All test files are updated
-- [ ] New test files for migration are created
+- [ ] New test files for configuration validation are created
 - [ ] Test helpers have their own tests
 - [ ] Edge cases are covered (empty configs, partial configs)
 - [ ] Performance of tests is not significantly impacted
@@ -860,12 +711,4 @@ describe('My Feature', () => {
    - **Mitigation**: Keep helpers focused and well-documented
 
 3. **Risk**: Integration tests miss real issues
-   - **Mitigation**: Test actual migration scenarios end-to-end
-
-### Compatibility Risks
-
-1. **Risk**: Tests no longer reflect actual usage
-   - **Mitigation**: Include tests for both legacy and new configs
-
-2. **Risk**: Coverage gaps in migration logic
-   - **Mitigation**: Dedicated migration test suite
+   - **Mitigation**: Test actual configuration scenarios end-to-end

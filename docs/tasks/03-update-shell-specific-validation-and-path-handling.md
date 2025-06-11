@@ -992,8 +992,7 @@ Override security settings per shell:
 ### Phase 3: Integration
 
 1. Update main server to use validation context
-2. Update all validation calls
-3. Ensure error messages include shell context
+2. Ensure error messages include shell context
 
 ## Acceptance Criteria
 
@@ -1029,7 +1028,6 @@ Override security settings per shell:
 - [ ] Validation architecture documented
 - [ ] Shell-specific validation rules documented
 - [ ] Path format examples for each shell
-- [ ] Migration notes for validation changes
 
 ## Risk Assessment
 
@@ -1043,11 +1041,3 @@ Override security settings per shell:
 
 3. **Risk**: Performance impact from context creation
    - **Mitigation**: Lightweight context objects, no heavy computation
-
-### Compatibility Risks
-
-1. **Risk**: Existing validation calls need updates
-   - **Mitigation**: Systematic update of all validation points
-
-2. **Risk**: Error messages change format
-   - **Mitigation**: Ensure new messages are more helpful, not just different

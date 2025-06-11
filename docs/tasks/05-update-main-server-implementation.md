@@ -2,15 +2,15 @@
 
 ## Overview and Problem Statement
 
-The main `CLIServer` class and its tool execution logic need to be updated to work with the new inheritance-based configuration structure. Currently, the server directly accesses flat configuration properties and doesn't use resolved shell configurations. We need to update the server to properly resolve configurations for each shell and use validation contexts throughout.
+The main `CLIServer` class and its tool execution logic need to be updated to work with the new inheritance-based configuration structure. The server should properly resolve configurations for each shell and use validation contexts throughout.
 
-### Current Issues
+### Requirements
 
-- Server stores flat lists of allowed paths and blocked commands
-- Tool execution directly accesses `config.security` and `config.shells`
-- No resolution of shell-specific configurations before execution
-- Validation doesn't use shell-specific contexts
-- Configuration serialization exposes internal structure
+- Server should use resolved shell configurations for execution
+- Tool execution should use shell-specific contexts
+- Configuration resolution should be cached for performance
+- Validation should use shell-specific contexts
+- Configuration serialization should be safe for external use
 
 ## Technical Implementation Details
 
@@ -1163,11 +1163,11 @@ ServerConfig
 
 Create `docs/API.md`:
 
-# API Reference
+## API Reference
 
-## Tools
+### Tools
 
-### execute_command
+#### execute_command Tool
 
 Execute a command in the specified shell with shell-specific validation and settings.
 
@@ -1196,7 +1196,7 @@ Execute a command in the specified shell with shell-specific validation and sett
 }
 ```
 
-### get_config
+### get_config Tool
 
 Get the complete configuration including resolved settings for each shell.
 
@@ -1205,7 +1205,7 @@ Get the complete configuration including resolved settings for each shell.
 - `configuration`: The raw configuration structure
 - `resolvedShells`: Effective settings for each enabled shell
 
-### validate_directories
+### validate_directories Tool
 
 Check if directories are valid for global or shell-specific contexts.
 
@@ -1259,7 +1259,7 @@ Check if directories are valid for global or shell-specific contexts.
 ### Technical Requirements
 
 - [ ] Resolved configurations are cached for performance
-- [ ] No direct access to flat config structure
+- [ ] No hardcoded configuration access remains in server code
 - [ ] Validation always uses contexts
 - [ ] Shell process creation uses resolved executable config
 - [ ] Configuration serialization doesn't expose functions
@@ -1276,7 +1276,6 @@ Check if directories are valid for global or shell-specific contexts.
 
 - [ ] Architecture documentation explains resolution flow
 - [ ] API documentation shows new response formats
-- [ ] Migration guide includes server implementation changes
 - [ ] Code comments explain caching strategy
 
 ## Risk Assessment
@@ -1291,11 +1290,3 @@ Check if directories are valid for global or shell-specific contexts.
 
 3. **Risk**: Complex validation flow
    - **Mitigation**: Clear separation of concerns with contexts
-
-### Compatibility Risks
-
-1. **Risk**: Tool response format changes
-   - **Mitigation**: Maintain backward compatible structure
-
-2. **Risk**: Error message format changes
-   - **Mitigation**: Add context without changing base format

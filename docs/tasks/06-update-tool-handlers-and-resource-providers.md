@@ -2,15 +2,15 @@
 
 ## Overview and Problem Statement
 
-The tool listing and resource providers need to be updated to work with the new configuration structure. Currently, the `ListToolsRequestSchema` handler builds tool descriptions using the flat configuration, and the resource provider exposes the old configuration format. We need to update these handlers to use resolved configurations and provide accurate, shell-specific information.
+The tool listing and resource providers need to be updated to work with the new configuration structure. The handlers should use resolved configurations and provide accurate, shell-specific information.
 
-### Current Issues
+### Requirements
 
-- Tool descriptions don't reflect shell-specific settings
-- Execute command description lists all shells from config, not just enabled ones
-- Resource provider exposes internal configuration structure
-- No way to see resolved configuration for specific shells
-- Tool input schemas are static and don't reflect actual configuration
+- Tool descriptions should reflect shell-specific settings
+- Execute command description should list only enabled shells
+- Resource provider should expose clean configuration structure
+- Provide access to resolved configuration for specific shells
+- Tool input schemas should be dynamic based on actual configuration
 
 ## Technical Implementation Details
 
@@ -1315,11 +1315,3 @@ Tool descriptions include:
 
 3. **Risk**: Complex schema generation logic
    - **Mitigation**: Keep schemas simple and well-tested
-
-### Compatibility Risks
-
-1. **Risk**: Tool description format changes
-   - **Mitigation**: Maintain essential information, enhance don't replace
-
-2. **Risk**: New resource URIs may conflict
-   - **Mitigation**: Use clear namespace (cli://)

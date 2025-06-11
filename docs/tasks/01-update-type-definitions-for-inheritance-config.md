@@ -100,39 +100,6 @@ export interface ResolvedShellConfig {
   validatePath?: (dir: string) => boolean;
   wslConfig?: WslSpecificConfig; // Only present for WSL
 }
-
-// For backward compatibility during migration
-export interface LegacySecurityConfig {
-  maxCommandLength: number;
-  blockedCommands: string[];
-  blockedArguments: string[];
-  allowedPaths: string[];
-  restrictWorkingDirectory: boolean;
-  commandTimeout: number;
-  enableInjectionProtection: boolean;
-  initialDir?: string;
-}
-
-export interface LegacyShellConfig {
-  enabled: boolean;
-  command: string;
-  args: string[];
-  validatePath?: (dir: string) => boolean;
-  blockedOperators?: string[];
-  allowedPaths?: string[];
-  wslMountPoint?: string;
-  inheritGlobalPaths?: boolean;
-}
-
-export interface LegacyServerConfig {
-  security: LegacySecurityConfig;
-  shells: {
-    powershell?: LegacyShellConfig;
-    cmd?: LegacyShellConfig;
-    gitbash?: LegacyShellConfig;
-    wsl?: LegacyShellConfig;
-  };
-}
 ```
 
 ### 2. Create Type Guards and Utilities
@@ -140,12 +107,7 @@ export interface LegacyServerConfig {
 Create `src/utils/configTypes.ts`:
 
 ```typescript
-import { ServerConfig, LegacyServerConfig, BaseShellConfig, WslShellConfig } from '../types/config.js';
-
-// Type guard to check if config is legacy format
-export function isLegacyConfig(config: any): config is LegacyServerConfig {
-  return config.security && !config.global;
-}
+import { BaseShellConfig, WslShellConfig } from '../types/config.js';
 
 // Type guard to check if shell is WSL with specific config
 export function isWslShellConfig(shell: BaseShellConfig | WslShellConfig | undefined): shell is WslShellConfig {
@@ -160,7 +122,7 @@ export function hasWslConfig(config: any): config is { wslConfig: WslSpecificCon
 
 ## Working Examples
 
-### Example New Configuration Format
+### Example Configuration Format
 
 ```json
 {
@@ -231,46 +193,10 @@ export function hasWslConfig(config: any): config is { wslConfig: WslSpecificCon
 
 ```typescript
 import { describe, test, expect } from '@jest/globals';
-import { isLegacyConfig, isWslShellConfig, hasWslConfig } from '../../src/utils/configTypes';
-import type { ServerConfig, LegacyServerConfig, BaseShellConfig, WslShellConfig } from '../../src/types/config';
+import { isWslShellConfig, hasWslConfig } from '../../src/utils/configTypes';
+import type { BaseShellConfig, WslShellConfig } from '../../src/types/config';
 
 describe('Config Type Guards', () => {
-  describe('isLegacyConfig', () => {
-    test('identifies legacy config structure', () => {
-      const legacy = {
-        security: {
-          maxCommandLength: 1000,
-          blockedCommands: ['rm'],
-          blockedArguments: ['--rf'],
-          allowedPaths: ['C:\\test'],
-          restrictWorkingDirectory: true,
-          commandTimeout: 30,
-          enableInjectionProtection: true
-        },
-        shells: {}
-      };
-      expect(isLegacyConfig(legacy)).toBe(true);
-    });
-
-    test('identifies new config structure', () => {
-      const newConfig = {
-        global: {
-          security: {},
-          restrictions: {},
-          paths: {}
-        },
-        shells: {}
-      };
-      expect(isLegacyConfig(newConfig)).toBe(false);
-    });
-
-    test('handles invalid config', () => {
-      expect(isLegacyConfig({})).toBe(false);
-      expect(isLegacyConfig(null)).toBe(false);
-      expect(isLegacyConfig(undefined)).toBe(false);
-    });
-  });
-
   describe('isWslShellConfig', () => {
     test('identifies WSL shell config', () => {
       const wslShell: WslShellConfig = {
@@ -316,155 +242,9 @@ describe('Config Type Guards', () => {
 });
 ```
 
-### 2. Update Existing Type Tests
-
-Update any existing tests that import the old type definitions to use the new types or legacy types as appropriate.
-
 ## Documentation Updates
 
-### 1. Create Migration Guide
-
-Create `docs/MIGRATION_TO_INHERITANCE_CONFIG.md`:
-
-```markdown
-# Migration Guide: Inheritance-Based Configuration
-
-## Overview
-
-This guide helps you migrate from the flat configuration structure to the new inheritance-based configuration.
-
-## Key Changes
-
-1. **Global Settings**: Security settings are now under `global` instead of top-level `security`
-2. **Shell Overrides**: Each shell can override global settings using the `overrides` property
-3. **Separated Concerns**: Restrictions (commands, arguments, operators) are now separate from security settings
-4. **WSL-Specific Config**: WSL has its own configuration section for mount points and path mapping
-
-## Migration Steps
-
-### Step 1: Restructure Your Configuration
-
-Old format:
-```json
-{
-  "security": {
-    "maxCommandLength": 2000,
-    "blockedCommands": ["rm", "del"],
-    "blockedArguments": ["--exec"],
-    "allowedPaths": ["C:\\Users"],
-    "restrictWorkingDirectory": true,
-    "commandTimeout": 30,
-    "enableInjectionProtection": true
-  },
-  "shells": {
-    "cmd": {
-      "enabled": true,
-      "command": "cmd.exe",
-      "args": ["/c"],
-      "blockedOperators": ["&", "|"]
-    }
-  }
-}
-```
-
-New format:
-
-```json
-{
-  "global": {
-    "security": {
-      "maxCommandLength": 2000,
-      "commandTimeout": 30,
-      "enableInjectionProtection": true,
-      "restrictWorkingDirectory": true
-    },
-    "restrictions": {
-      "blockedCommands": ["rm", "del"],
-      "blockedArguments": ["--exec"],
-      "blockedOperators": ["&", "|"]
-    },
-    "paths": {
-      "allowedPaths": ["C:\\Users"]
-    }
-  },
-  "shells": {
-    "cmd": {
-      "enabled": true,
-      "executable": {
-        "command": "cmd.exe",
-        "args": ["/c"]
-      }
-    }
-  }
-}
-```
-
-### Step 2: Add Shell-Specific Overrides
-
-If you need different settings for specific shells, add overrides:
-
-```json
-{
-  "shells": {
-    "wsl": {
-      "enabled": true,
-      "executable": {
-        "command": "wsl.exe",
-        "args": ["-e"]
-      },
-      "overrides": {
-        "security": {
-          "commandTimeout": 120
-        },
-        "paths": {
-          "allowedPaths": ["/home/user", "/tmp"]
-        }
-      }
-    }
-  }
-}
-```
-
-## Backward Compatibility
-
-The system will automatically detect and convert legacy configurations during the migration period.
-
-### 2. Update Type Definition Documentation
-
-Add to `src/types/README.md` (create if doesn't exist):
-
-# Configuration Type Definitions
-
-## Overview
-
-The configuration system uses TypeScript interfaces to ensure type safety and provide clear contracts for configuration structure.
-
-## Type Hierarchy
-
-1. **ServerConfig**: Root configuration interface
-   - `global`: Global settings that apply to all shells
-   - `shells`: Shell-specific configurations
-
-2. **GlobalConfig**: Default settings for all shells
-   - `security`: Security-related settings
-   - `restrictions`: Command and argument restrictions
-   - `paths`: Path-related settings
-
-3. **ShellConfig**: Individual shell configuration
-   - `BaseShellConfig`: Standard shell configuration
-   - `WslShellConfig`: Extended configuration for WSL
-
-4. **ResolvedShellConfig**: Internal representation after merging global and shell-specific settings
-
-## Type Guards
-
-Use the provided type guards for runtime type checking:
-
-- `isLegacyConfig()`: Check if configuration uses old format
-- `isWslShellConfig()`: Check if shell configuration includes WSL-specific settings
-- `hasWslConfig()`: Check if resolved config has WSL configuration
-
-## Implementation Phases
+### 1. Update Type Definition Documentation
 
 ### Phase 1: Type Definition Updates
 
@@ -480,9 +260,8 @@ Use the provided type guards for runtime type checking:
 
 ### Phase 3: Documentation
 
-1. Create migration guide for users
-2. Document new type hierarchy
-3. Update inline documentation in type files
+1. Document new type hierarchy
+2. Update inline documentation in type files
 
 ## Acceptance Criteria
 
@@ -492,7 +271,6 @@ Use the provided type guards for runtime type checking:
 - [ ] Type guards correctly identify legacy vs new configuration formats
 - [ ] Type guards correctly identify WSL-specific configurations
 - [ ] All types have proper JSDoc comments explaining their purpose
-- [ ] Backward compatibility types (Legacy*) are available for migration
 
 ### Technical Requirements
 
@@ -511,28 +289,16 @@ Use the provided type guards for runtime type checking:
 
 ### Documentation Requirements
 
-- [ ] Migration guide clearly explains the changes
 - [ ] Type hierarchy is documented
-- [ ] Examples show both old and new formats
+- [ ] Examples show new configuration format
 - [ ] JSDoc comments are complete and accurate
 
-## Risk Assessment
+### 1. Risk Assessment
 
 ### Technical Risks
 
-1. **Risk**: Existing code expects old type structure
-   - **Mitigation**: Keep legacy types available for gradual migration
-
-2. **Risk**: Type guards may not cover all edge cases
+1. **Risk**: Type guards may not cover all edge cases
    - **Mitigation**: Comprehensive unit testing with edge cases
 
-3. **Risk**: Complex type hierarchy may confuse developers
+2. **Risk**: Complex type hierarchy may confuse developers
    - **Mitigation**: Clear documentation and examples
-
-### Compatibility Risks
-
-1. **Risk**: Breaking change for existing configurations
-   - **Mitigation**: Implement automatic migration in configuration loader
-
-2. **Risk**: Third-party tools may depend on old structure
-   - **Mitigation**: Support both formats during transition period

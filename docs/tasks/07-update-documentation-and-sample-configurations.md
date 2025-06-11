@@ -2,15 +2,14 @@
 
 ## Overview and Problem Statement
 
-All project documentation and sample configurations are written for the legacy flat configuration structure. With the new inheritance-based configuration system, users need updated documentation, migration guides, and sample configurations that demonstrate the new features and best practices.
+The project documentation and sample configurations need to be updated to demonstrate the inheritance-based configuration system and its features.
 
 ### Current Issues
 
-- README shows old configuration format
-- No migration guide for existing users
-- Sample configurations use flat structure
-- No examples of shell-specific overrides
+- Documentation needs examples of the new configuration format
+- Sample configurations should demonstrate shell-specific overrides
 - Missing documentation for new features (inheritance, WSL config, etc.)
+- Need comprehensive examples showing different use cases
 
 ## Technical Implementation Details
 
@@ -114,10 +113,6 @@ The server uses an inheritance-based configuration system where global defaults 
 - Blocked operators: Shell list replaces global list
 - Allowed paths: Shell paths replace global paths entirely
 
-### Migration from Legacy Configuration
-
-If you have an existing configuration, it will be automatically migrated. See the [Migration Guide](docs/MIGRATION_GUIDE.md) for details.
-
 ### Shell-Specific Features
 
 #### Windows Shells (CMD, PowerShell)
@@ -139,344 +134,7 @@ If you have an existing configuration, it will be automatically migrated. See th
 
 [Continue with existing sections, updating examples to use new format]
 
-### 2. Create Migration Guide
-
-Create `docs/MIGRATION_GUIDE.md`:
-
-# Migration Guide: From Flat to Inheritance-Based Configuration
-
-## Overview
-
-Version 2.0 introduces an inheritance-based configuration system that provides better flexibility and shell-specific customization. Your existing configuration will be automatically migrated, but understanding the new structure will help you take advantage of new features.
-
-## What's Changed
-
-### Configuration Structure
-
-#### Before (Flat Structure)
-
-```json
-{
-  "security": {
-    "maxCommandLength": 2000,
-    "blockedCommands": ["rm", "del"],
-    "blockedArguments": ["--exec"],
-    "allowedPaths": ["C:\\Users\\Me"],
-    "restrictWorkingDirectory": true,
-    "commandTimeout": 30,
-    "enableInjectionProtection": true
-  },
-  "shells": {
-    "cmd": {
-      "enabled": true,
-      "command": "cmd.exe",
-      "args": ["/c"],
-      "blockedOperators": ["&", "|"]
-    },
-    "wsl": {
-      "enabled": true,
-      "command": "wsl.exe",
-      "args": ["-e"],
-      "blockedOperators": ["&", "|", ";"],
-      "allowedPaths": ["/home/user"],
-      "wslMountPoint": "/mnt/",
-      "inheritGlobalPaths": true
-    }
-  }
-}
-```
-
-#### After (Inheritance-Based Structure)
-
-```json
-{
-  "global": {
-    "security": {
-      "maxCommandLength": 2000,
-      "commandTimeout": 30,
-      "enableInjectionProtection": true,
-      "restrictWorkingDirectory": true
-    },
-    "restrictions": {
-      "blockedCommands": ["rm", "del"],
-      "blockedArguments": ["--exec"],
-      "blockedOperators": ["&", "|"]
-    },
-    "paths": {
-      "allowedPaths": ["C:\\Users\\Me"]
-    }
-  },
-  "shells": {
-    "cmd": {
-      "enabled": true,
-      "executable": {
-        "command": "cmd.exe",
-        "args": ["/c"]
-      }
-    },
-    "wsl": {
-      "enabled": true,
-      "executable": {
-        "command": "wsl.exe",
-        "args": ["-e"]
-      },
-      "wslConfig": {
-        "mountPoint": "/mnt/",
-        "inheritGlobalPaths": true
-      },
-      "overrides": {
-        "restrictions": {
-          "blockedOperators": ["&", "|", ";"]
-        },
-        "paths": {
-          "allowedPaths": ["/home/user"]
-        }
-      }
-    }
-  }
-}
-```
-
-## Automatic Migration
-
-When you start the server with an old configuration:
-
-1. The server detects the legacy format
-2. Automatically converts it to the new format
-3. Logs a warning suggesting you update your config file
-4. Continues operating normally
-
-## Key Differences
-
-### 1. Hierarchical Structure
-
-- Global defaults under `global` key
-- Shell-specific overrides under `shells.<shell>.overrides`
-
-### 2. Separated Concerns
-
-- Security settings (timeout, max length, etc.)
-- Restrictions (blocked items)
-- Paths (allowed directories)
-
-### 3. Shell Configuration
-
-- `command` and `args` now under `executable`
-- WSL-specific settings under `wslConfig`
-- Overrides clearly separated
-
-### 4. Merging Behavior
-
-| Setting Type | Merge Strategy |
-|-------------|----------------|
-| Security settings | Override (shell replaces global) |
-| Blocked commands | Append (shell adds to global) |
-| Blocked arguments | Append (shell adds to global) |
-| Blocked operators | Replace (shell replaces global) |
-| Allowed paths | Replace (shell replaces global) |
-
-## Migration Examples
-
-### Example 1: Simple CMD Configuration
-
-**Old:**
-
-```json
-{
-  "security": {
-    "blockedCommands": ["format", "del"]
-  },
-  "shells": {
-    "cmd": {
-      "enabled": true,
-      "command": "cmd.exe",
-      "args": ["/c"]
-    }
-  }
-}
-```
-
-**New:**
-
-```json
-{
-  "global": {
-    "restrictions": {
-      "blockedCommands": ["format", "del"]
-    }
-  },
-  "shells": {
-    "cmd": {
-      "enabled": true,
-      "executable": {
-        "command": "cmd.exe",
-        "args": ["/c"]
-      }
-    }
-  }
-}
-```
-
-### Example 2: Mixed Shell Configuration
-
-**Old:**
-
-```json
-{
-  "security": {
-    "allowedPaths": ["C:\\Work"],
-    "commandTimeout": 30
-  },
-  "shells": {
-    "cmd": {
-      "enabled": true,
-      "command": "cmd.exe",
-      "args": ["/c"]
-    },
-    "wsl": {
-      "enabled": true,
-      "command": "wsl.exe",
-      "args": ["-e"],
-      "allowedPaths": ["/home/work"]
-    }
-  }
-}
-```
-
-**New:**
-
-```json
-{
-  "global": {
-    "security": {
-      "commandTimeout": 30
-    },
-    "paths": {
-      "allowedPaths": ["C:\\Work"]
-    }
-  },
-  "shells": {
-    "cmd": {
-      "enabled": true,
-      "executable": {
-        "command": "cmd.exe",
-        "args": ["/c"]
-      }
-    },
-    "wsl": {
-      "enabled": true,
-      "executable": {
-        "command": "wsl.exe",
-        "args": ["-e"]
-      },
-      "overrides": {
-        "paths": {
-          "allowedPaths": ["/home/work"]
-        }
-      }
-    }
-  }
-}
-```
-
-## Taking Advantage of New Features
-
-### 1. Shell-Specific Timeouts
-
-```json
-{
-  "global": {
-    "security": {
-      "commandTimeout": 30  // Default for all shells
-    }
-  },
-  "shells": {
-    "wsl": {
-      "overrides": {
-        "security": {
-          "commandTimeout": 120  // WSL commands can take longer
-        }
-      }
-    }
-  }
-}
-```
-
-### 2. Different Security Levels
-
-```json
-{
-  "shells": {
-    "cmd": {
-      "overrides": {
-        "security": {
-          "enableInjectionProtection": true  // Strict for CMD
-        }
-      }
-    },
-    "gitbash": {
-      "overrides": {
-        "security": {
-          "enableInjectionProtection": false  // Relaxed for Git Bash
-        }
-      }
-    }
-  }
-}
-```
-
-### 3. Path Format Management
-
-```json
-{
-  "global": {
-    "paths": {
-      "allowedPaths": ["C:\\Projects", "D:\\Work"]  // Windows paths
-    }
-  },
-  "shells": {
-    "wsl": {
-      "wslConfig": {
-        "inheritGlobalPaths": true  // Converts to /mnt/c/Projects, /mnt/d/Work
-      },
-      "overrides": {
-        "paths": {
-          "allowedPaths": ["/home/user"]  // Additional Unix paths
-        }
-      }
-    }
-  }
-}
-```
-
-## Troubleshooting
-
-### Configuration Not Loading
-
-- Check JSON syntax
-- Ensure file encoding is UTF-8
-- Verify file permissions
-
-### Unexpected Behavior
-
-- Use `get_config` tool to see resolved configuration
-- Check `cli://config/shells/<shell>` resource for effective settings
-- Review merge strategies above
-
-### Performance Issues
-
-- Shell-specific timeouts may need adjustment
-- Consider reducing `maxCommandLength` for better validation performance
-
-## Best Practices
-
-1. **Start with Global Defaults**: Set common settings globally
-2. **Override Sparingly**: Only override what's different for specific shells
-3. **Use Appropriate Paths**: Windows paths for Windows shells, Unix paths for WSL
-4. **Test Each Shell**: Verify settings with `get_config` tool
-5. **Document Overrides**: Comment why specific overrides are needed
-
-### 3. Update Sample Configurations
+### 2. Update Sample Configurations
 
 Update `config.sample.json`:
 
@@ -1021,7 +679,7 @@ Maximum security with allowlist approach:
 
 Create `docs/CLI_USAGE.md`:
 
-# CLI Usage Guide
+### 5. Create CLI Usage Guide
 
 ## Working with Different Shells
 
@@ -1029,7 +687,7 @@ Create `docs/CLI_USAGE.md`:
 
 Each shell expects paths in specific formats:
 
-#### Windows Shells (CMD, PowerShell)
+#### CMD and PowerShell Path Formats
 
 ```bash
 # Correct
@@ -1319,97 +977,117 @@ describe('Configuration Examples', () => {
 });
 ```
 
-### 2. Create Migration Validation Tests
+### 2. Create Configuration Validation Tests
 
-Create `tests/documentation/migrationExamples.test.ts`:
+Create `tests/documentation/configExamples.test.ts`:
 
 ```typescript
 import { describe, test, expect } from '@jest/globals';
-import { migrateLegacyConfig } from '../../src/utils/configMigration.js';
+import { loadConfig } from '../../src/utils/config.js';
 
-describe('Migration Guide Examples', () => {
-  test('simple CMD configuration migrates correctly', () => {
-    const legacy = {
-      security: {
-        blockedCommands: ["format", "del"]
+describe('Documentation Configuration Examples', () => {
+  test('minimal configuration loads correctly', () => {
+    const config = {
+      global: {
+        security: {
+          restrictWorkingDirectory: false,
+          enableInjectionProtection: true
+        }
       },
       shells: {
         cmd: {
           enabled: true,
-          command: "cmd.exe",
-          args: ["/c"]
+          executable: {
+            command: "cmd.exe",
+            args: ["/c"]
+          }
         }
       }
     };
 
-    const migrated = migrateLegacyConfig(legacy);
-    
-    expect(migrated.global.restrictions.blockedCommands).toEqual(["format", "del"]);
-    expect(migrated.shells.cmd?.enabled).toBe(true);
-    expect(migrated.shells.cmd?.executable.command).toBe("cmd.exe");
+    expect(() => loadConfig(config)).not.toThrow();
+    expect(config.shells.cmd?.enabled).toBe(true);
   });
 
-  test('mixed shell configuration migrates correctly', () => {
-    const legacy = {
-      security: {
-        allowedPaths: ["C:\\Work"],
-        commandTimeout: 30,
-        maxCommandLength: 2000,
-        blockedCommands: [],
-        blockedArguments: [],
-        restrictWorkingDirectory: true,
-        enableInjectionProtection: true
+  test('development configuration loads correctly', () => {
+    const config = {
+      global: {
+        security: {
+          maxCommandLength: 5000,
+          commandTimeout: 120,
+          enableInjectionProtection: false,
+          restrictWorkingDirectory: false
+        },
+        paths: {
+          allowedPaths: ["C:\\Dev", "C:\\Projects"],
+          initialDir: "C:\\Dev"
+        }
       },
       shells: {
         cmd: {
           enabled: true,
-          command: "cmd.exe",
-          args: ["/c"]
+          executable: {
+            command: "cmd.exe",
+            args: ["/c"]
+          }
+        },
+        powershell: {
+          enabled: true,
+          executable: {
+            command: "powershell.exe",
+            args: ["-NoProfile", "-Command"]
+          }
         },
         wsl: {
           enabled: true,
-          command: "wsl.exe",
-          args: ["-e"],
-          allowedPaths: ["/home/work"]
+          executable: {
+            command: "wsl.exe",
+            args: ["-e"]
+          },
+          wslConfig: {
+            inheritGlobalPaths: true
+          }
         }
       }
     };
 
-    const migrated = migrateLegacyConfig(legacy);
-    
-    expect(migrated.global.security.commandTimeout).toBe(30);
-    expect(migrated.global.paths.allowedPaths).toEqual(["C:\\Work"]);
-    expect(migrated.shells.wsl?.overrides?.paths?.allowedPaths).toEqual(["/home/work"]);
+    expect(() => loadConfig(config)).not.toThrow();
+    expect(config.shells.wsl?.wslConfig?.inheritGlobalPaths).toBe(true);
   });
 
-  test('WSL configuration with mount point migrates correctly', () => {
-    const legacy = {
-      security: {
-        maxCommandLength: 2000,
-        blockedCommands: [],
-        blockedArguments: [],
-        allowedPaths: [],
-        restrictWorkingDirectory: false,
-        commandTimeout: 30,
-        enableInjectionProtection: true
+  test('production configuration with overrides loads correctly', () => {
+    const config = {
+      global: {
+        security: {
+          maxCommandLength: 1000,
+          commandTimeout: 15,
+          enableInjectionProtection: true,
+          restrictWorkingDirectory: true
+        },
+        restrictions: {
+          blockedCommands: ["format", "shutdown", "del"],
+          blockedArguments: ["--exec", "-e"],
+          blockedOperators: ["&", "|", ";"]
+        }
       },
       shells: {
-        wsl: {
+        cmd: {
           enabled: true,
-          command: "wsl.exe",
-          args: ["-e"],
-          wslMountPoint: "/custom/mount/",
-          inheritGlobalPaths: false,
-          allowedPaths: ["/home/user"]
+          executable: {
+            command: "cmd.exe",
+            args: ["/c"]
+          },
+          overrides: {
+            security: {
+              commandTimeout: 30
+            }
+          }
         }
       }
     };
 
-    const migrated = migrateLegacyConfig(legacy);
-    
-    expect(migrated.shells.wsl?.wslConfig?.mountPoint).toBe("/custom/mount/");
-    expect(migrated.shells.wsl?.wslConfig?.inheritGlobalPaths).toBe(false);
-    expect(migrated.shells.wsl?.overrides?.paths?.allowedPaths).toEqual(["/home/user"]);
+    expect(() => loadConfig(config)).not.toThrow();
+    expect(config.shells.cmd?.overrides?.security?.commandTimeout).toBe(30);
   });
 });
 ```
@@ -1438,7 +1116,7 @@ describe('Migration Guide Examples', () => {
 ### Phase 1: Core Documentation Updates
 
 1. Update README with new configuration structure
-2. Create comprehensive migration guide
+2. Create comprehensive usage examples
 3. Update main sample configuration
 
 ### Phase 2: Example Configurations
@@ -1456,7 +1134,7 @@ describe('Migration Guide Examples', () => {
 ### Phase 4: Testing and Validation
 
 1. Create tests for all example configurations
-2. Validate migration examples
+2. Validate all example configurations load correctly
 3. Ensure documentation accuracy
 
 ## Acceptance Criteria
@@ -1464,7 +1142,7 @@ describe('Migration Guide Examples', () => {
 ### Functional Requirements
 
 - [ ] README clearly explains new configuration structure
-- [ ] Migration guide covers all common scenarios
+- [ ] Usage examples cover all common scenarios
 - [ ] All example configurations are valid and load without errors
 - [ ] CLI usage guide covers all shells with examples
 - [ ] Path format requirements are clearly documented
@@ -1474,13 +1152,13 @@ describe('Migration Guide Examples', () => {
 
 - [ ] All JSON examples are valid syntax
 - [ ] Example configurations demonstrate key features
-- [ ] Migration examples show before/after correctly
-- [ ] No references to old configuration structure remain
+- [ ] Configuration examples show inheritance correctly
+- [ ] No references to unsupported configuration structures remain
 
 ### Testing Requirements
 
 - [ ] All example configurations pass validation tests
-- [ ] Migration examples correctly transform
+- [ ] Configuration examples load without errors
 - [ ] Documentation examples are tested
 - [ ] No broken links in documentation
 
@@ -1495,19 +1173,19 @@ describe('Migration Guide Examples', () => {
 
 ### Technical Risks
 
-1. **Risk**: Users confused by new structure
-   - **Mitigation**: Comprehensive migration guide with examples
+1. **Risk**: Users confused by configuration structure
+   - **Mitigation**: Comprehensive examples and clear documentation
 
 2. **Risk**: Invalid examples in documentation
    - **Mitigation**: Automated tests for all examples
 
-3. **Risk**: Missing important migration scenarios
+3. **Risk**: Missing important configuration scenarios
    - **Mitigation**: Community feedback and iterative updates
 
-### Compatibility Risks
+### Documentation Risks
 
-1. **Risk**: Users don't update configurations
-   - **Mitigation**: Automatic migration with clear warnings
+1. **Risk**: Examples don't cover real-world use cases
+   - **Mitigation**: Multiple example configurations for different scenarios
 
-2. **Risk**: Third-party integrations break
-   - **Mitigation**: Maintain backward compatibility period
+2. **Risk**: Configuration structure changes affect examples
+   - **Mitigation**: Automated validation tests for all examples
