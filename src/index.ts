@@ -16,22 +16,21 @@ import {
   parseCommand,
   extractCommandName,
   validateShellOperators,
-  normalizeWindowsPath,
-  validateWindowsWorkingDirectory,
   convertWindowsToWslPath,
   isPathAllowed
 } from './utils/validation.js';
 import { createValidationContext } from './utils/validationContext.js';
-import { validateWorkingDirectory } from './utils/pathValidation.js';
+import { validateWorkingDirectory, normalizePathForShell } from './utils/pathValidation.js';
 import { validateDirectoriesAndThrow } from './utils/directoryValidator.js';
 import { spawn } from 'child_process';
 import { z } from 'zod';
 import { readFileSync } from 'fs';
 import path from 'path';
 import { buildToolDescription } from './utils/toolDescription.js';
-import { loadConfig, createDefaultConfig } from './utils/config.js';
+import { loadConfig, createDefaultConfig, getResolvedShellConfig } from './utils/config.js';
 import { createSerializableConfig } from './utils/configUtils.js';
-import type { ServerConfig, ShellConfig } from './types/config.js'; // Added ShellConfig
+import type { ServerConfig, BaseShellConfig } from './types/config.js';
+import type { ValidationContext } from './utils/validationContext.js';
 import { createRequire } from 'module';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname } from 'path';
@@ -85,34 +84,34 @@ class CLIServer {
     });
 
     // Initialize from config
-    this.allowedPaths = new Set(config.security.allowedPaths);
-    this.blockedCommands = new Set(config.security.blockedCommands);
+    this.allowedPaths = new Set(config.global.paths.allowedPaths);
+    this.blockedCommands = new Set(config.global.restrictions.blockedCommands);
 
     let candidateCwd: string | undefined = undefined;
     let chdirFailed = false;
     const startupMessages: string[] = [];
 
-    if (this.config.security.initialDir && typeof this.config.security.initialDir === 'string') {
+    if (this.config.global.paths.initialDir && typeof this.config.global.paths.initialDir === 'string') {
       try {
-        process.chdir(this.config.security.initialDir);
-        candidateCwd = this.config.security.initialDir;
+        process.chdir(this.config.global.paths.initialDir);
+        candidateCwd = this.config.global.paths.initialDir;
         startupMessages.push(`INFO: Successfully changed current working directory to configured initialDir: ${candidateCwd}`);
       } catch (err: any) {
-        startupMessages.push(`ERROR: Failed to change directory to configured initialDir '${this.config.security.initialDir}': ${err?.message}. Falling back to process CWD.`);
+        startupMessages.push(`ERROR: Failed to change directory to configured initialDir '${this.config.global.paths.initialDir}': ${err?.message}. Falling back to process CWD.`);
         chdirFailed = true;
       }
     }
 
     if (!candidateCwd || chdirFailed) {
-      candidateCwd = normalizeWindowsPath(process.cwd());
+      candidateCwd = process.cwd().replace(/\\/g, '/');
       if (chdirFailed) {
         startupMessages.push(`INFO: Current working directory remains: ${candidateCwd}`);
       }
     }
 
-    const restrictCwd = this.config.security.restrictWorkingDirectory;
-    const allowedPathsDefined = this.config.security.allowedPaths && this.config.security.allowedPaths.length > 0;
-    const normalizedAllowedPathsFromConfig = this.config.security.allowedPaths.map(p => normalizeWindowsPath(p));
+    const restrictCwd = this.config.global.security.restrictWorkingDirectory;
+    const allowedPathsDefined = this.config.global.paths.allowedPaths && this.config.global.paths.allowedPaths.length > 0;
+    const normalizedAllowedPathsFromConfig = this.config.global.paths.allowedPaths.map((p: string) => p.replace(/\\/g, '/'));
 
     if (restrictCwd && allowedPathsDefined) {
       const isCandidateCwdAllowed = isPathAllowed(candidateCwd!, normalizedAllowedPathsFromConfig);
@@ -188,9 +187,9 @@ class CLIServer {
           }
         } else {
           // Windows or mixed format paths
-          target = normalizeWindowsPath(args[0]);
+          target = normalizePathForShell(args[0], context);
           if (!path.isAbsolute(target)) {
-            target = normalizeWindowsPath(path.resolve(currentDir, target));
+            target = normalizePathForShell(path.resolve(currentDir, target), context);
           }
         }
         
@@ -340,7 +339,10 @@ class CLIServer {
             if (args.shell === 'wsl') {
               workingDir = args.workingDir;
             } else {
-              workingDir = normalizeWindowsPath(args.workingDir);
+              // For non-WSL shells, normalize the path for the appropriate shell
+              const shellConfig = this.config.shells[args.shell as keyof typeof this.config.shells];
+              const shellValidationContext = createValidationContext(args.shell, shellConfig as any);
+              workingDir = normalizePathForShell(args.workingDir, shellValidationContext);
             }
           } else {
             if (!this.serverActiveCwd) {
@@ -357,16 +359,20 @@ class CLIServer {
           }
 
           const shellKey = args.shell as keyof typeof this.config.shells;
-          const resolvedShellConfig = getResolvedShellConfig(this.config, shellKey);
-          if (!resolvedShellConfig) {
+          const shellConfig = this.config.shells[shellKey as keyof typeof this.config.shells];
+          if (!shellConfig || !shellConfig.enabled) {
             throw new McpError(
               ErrorCode.InvalidRequest,
               `Shell '${shellKey}' is not configured or enabled`
             );
           }
 
-          // Create validation context
-          const validationContext = createValidationContext(shellKey, resolvedShellConfig);
+          // Create validation context with properly resolved shell config
+          const resolvedConfig = getResolvedShellConfig(this.config, shellKey);
+          if (!resolvedConfig) {
+            throw new McpError(ErrorCode.InvalidRequest, `Shell '${shellKey}' configuration could not be resolved`);
+          }
+          const validationContext = createValidationContext(shellKey, resolvedConfig);
 
           // Validate working directory with context
           if (args.workingDir) {
@@ -408,7 +414,7 @@ class CLIServer {
           // For GitBash, ensure Windows-style paths for Node.js spawn
           else if (validationContext.shellName === 'gitbash' && workingDir.startsWith('/')) {
             // Convert GitBash-style path to Windows path for spawn
-            effectiveSpawnCwd = normalizeWindowsPath(workingDir);
+            effectiveSpawnCwd = normalizePathForShell(workingDir, validationContext);
           }
 
           // Execute command
@@ -416,6 +422,9 @@ class CLIServer {
             let shellProcess: ReturnType<typeof spawn>;
             let spawnArgs: string[];
 
+            // Get shell executable config
+            const shellConfig = this.config.shells[shellKey as keyof typeof this.config.shells]!.executable;
+            
             if (shellKey === 'wsl') {
               const parsedWslCommand = parseCommand(args.command);
               spawnArgs = [...shellConfig.args, parsedWslCommand.command, ...parsedWslCommand.args];
@@ -500,12 +509,12 @@ class CLIServer {
             // Set configurable timeout to prevent hanging
             const timeout = setTimeout(() => {
               shellProcess.kill();
-              const timeoutMessage = `Command execution timed out after ${this.config.security.commandTimeout} seconds. Consult the server admin for configuration changes (config.json - commandTimeout).`;
+              const timeoutMessage = `Command execution timed out after ${this.config.global.security.commandTimeout} seconds. Consult the server admin for configuration changes (config.json - commandTimeout).`;
               reject(new McpError(
                 ErrorCode.InternalError,
                 timeoutMessage
               ));
-            }, this.config.security.commandTimeout * 1000);
+            }, this.config.global.security.commandTimeout * 1000);
 
             shellProcess.on('close', () => clearTimeout(timeout));
           });
@@ -543,19 +552,25 @@ class CLIServer {
           let newDir = args.path;
           // If it's a GitBash path, normalize it to Windows format for Node.js
           if (args.path.match(/^\/[a-z]\//i)) {
-            newDir = normalizeWindowsPath(args.path);
+            // Convert GitBash-style path (/c/path) to Windows format (C:/path)
+            const match = args.path.match(/^\/([a-z])(\/.*)$/i);
+            if (match) {
+              const drive = match[1].toUpperCase();
+              const remainder = match[2].replace(/\//g, '\\');
+              newDir = `${drive}:${remainder}`;
+            }
           }
 
           // Validate the path
           try {
-            if (this.config.security.restrictWorkingDirectory) {
+            if (this.config.global.security.restrictWorkingDirectory) {
               // Create a generic Windows validation context for directory validation
               const shellKey = 'cmd';
-              const resolvedShellConfig = getResolvedShellConfig(this.config, shellKey);
-              if (!resolvedShellConfig) {
+              const resolvedConfig = getResolvedShellConfig(this.config, shellKey);
+              if (!resolvedConfig) {
                 throw new McpError(ErrorCode.InvalidRequest, 'Failed to resolve shell configuration');
               }
-              const validationContext = createValidationContext(shellKey, resolvedShellConfig);
+              const validationContext = createValidationContext(shellKey, resolvedConfig);
               validateWorkingDirectory(newDir, validationContext);
             }
 
@@ -589,7 +604,7 @@ class CLIServer {
       }
 
       case "validate_directories": {
-          if (!this.config.security.restrictWorkingDirectory) {
+          if (!this.config.global.security.restrictWorkingDirectory) {
             return {
               content: [{
                 type: "text",
@@ -601,7 +616,7 @@ class CLIServer {
           }
           try {
             const parsedValDirArgs = ValidateDirectoriesArgsSchema.parse(toolParams.arguments);
-            const allowedPathsArray = this.config.security.allowedPaths ?? [];
+            const allowedPathsArray = this.config.global.paths.allowedPaths ?? [];
             validateDirectoriesAndThrow(parsedValDirArgs.directories, allowedPathsArray);
             return {
               content: [{
