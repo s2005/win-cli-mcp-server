@@ -2,20 +2,22 @@ import { describe, expect, test, jest } from '@jest/globals';
 import os from 'os';
 import path from 'path';
 import { ErrorCode } from '@modelcontextprotocol/sdk/types.js';
+// Import from validation.js only what still exists there
 import {
   extractCommandName,
   isCommandBlocked,
   isArgumentBlocked,
   parseCommand,
-  isPathAllowed,
-  validateWorkingDirectory,
-  isWslPathAllowed,
-  validateWslWorkingDirectory,
-  normalizeWindowsPath,
-  normalizeAllowedPaths,
   validateShellOperators
 } from '../src/utils/validation.js';
-import type { ShellConfig } from '../src/types/config.js';
+// Import the path-related functionality from pathValidation.js
+import {
+  validateWorkingDirectory, 
+  normalizePathForShell
+} from '../src/utils/pathValidation.js';
+// Import createValidationContext to create contexts for the tests
+import { createValidationContext } from '../src/utils/validationContext.js';
+import type { ShellConfig, ResolvedShellConfig } from '../src/types/config.js';
 
 // Mock child_process exec
 jest.mock('child_process', () => ({

@@ -17,11 +17,12 @@ import {
   extractCommandName,
   validateShellOperators,
   normalizeWindowsPath,
-  validateWorkingDirectory,
-  validateWslWorkingDirectory,
+  validateWindowsWorkingDirectory,
   convertWindowsToWslPath,
   isPathAllowed
 } from './utils/validation.js';
+import { createValidationContext } from './utils/validationContext.js';
+import { validateWorkingDirectory } from './utils/pathValidation.js';
 import { validateDirectoriesAndThrow } from './utils/directoryValidator.js';
 import { spawn } from 'child_process';
 import { z } from 'zod';
@@ -136,37 +137,36 @@ class CLIServer {
     this.setupHandlers();
   }
 
-  private validateSingleCommand(shellConfig: ShellConfig, command: string): void { // Takes ShellConfig directly
-    if (this.config.security.enableInjectionProtection) {
-      // const shellConfig = this.config.shells[shell]; // No longer needed
-      validateShellOperators(command, shellConfig); // Use passed shellConfig
+  private validateSingleCommand(context: ValidationContext, command: string): void {
+    if (context.shellConfig.security.enableInjectionProtection) {
+      validateShellOperators(command, context);
     }
 
     const { command: executable, args } = parseCommand(command);
 
-    if (isCommandBlocked(executable, Array.from(this.blockedCommands))) {
+    if (isCommandBlocked(executable, context)) {
       throw new McpError(
         ErrorCode.InvalidRequest,
-        `Command is blocked: "${extractCommandName(executable)}"`
+        `Command is blocked for ${context.shellName}: "${extractCommandName(executable)}"`
       );
     }
 
-    if (isArgumentBlocked(args, this.config.security.blockedArguments)) {
+    if (isArgumentBlocked(args, context)) {
       throw new McpError(
         ErrorCode.InvalidRequest,
-        'One or more arguments are blocked. Check configuration for blocked patterns.'
+        `One or more arguments are blocked for ${context.shellName}. Check configuration for blocked patterns.`
       );
     }
 
-    if (command.length > this.config.security.maxCommandLength) {
+    if (command.length > context.shellConfig.security.maxCommandLength) {
       throw new McpError(
         ErrorCode.InvalidRequest,
-        `Command exceeds maximum length of ${this.config.security.maxCommandLength}`
+        `Command exceeds maximum length of ${context.shellConfig.security.maxCommandLength} for ${context.shellName}`
       );
     }
   }
 
-  private validateCommand(shellConfig: ShellConfig, command: string, workingDir: string): void { // Takes ShellConfig
+  private validateCommand(context: ValidationContext, command: string, workingDir: string): void {
     const steps = command.split(/\s*&&\s*/);
     let currentDir = workingDir;
 
@@ -174,16 +174,28 @@ class CLIServer {
       const trimmed = step.trim();
       if (!trimmed) continue;
 
-      this.validateSingleCommand(shellConfig, trimmed); // Pass shellConfig
+      this.validateSingleCommand(context, trimmed);
 
       const { command: executable, args } = parseCommand(trimmed);
       if ((executable.toLowerCase() === 'cd' || executable.toLowerCase() === 'chdir') && args.length) {
-        let target = normalizeWindowsPath(args[0]);
-        if (!path.isAbsolute(target)) {
-          target = normalizeWindowsPath(path.resolve(currentDir, target));
+        // Handle path format according to shell type
+        let target;
+        if (context.isWslShell) {
+          // WSL paths should remain as-is
+          target = args[0];
+          if (!path.posix.isAbsolute(target)) {
+            target = path.posix.resolve(currentDir, target);
+          }
+        } else {
+          // Windows or mixed format paths
+          target = normalizeWindowsPath(args[0]);
+          if (!path.isAbsolute(target)) {
+            target = normalizeWindowsPath(path.resolve(currentDir, target));
+          }
         }
-        if (this.config.security.restrictWorkingDirectory) {
-          validateWorkingDirectory(target, Array.from(this.allowedPaths));
+        
+        if (context.shellConfig.security.restrictWorkingDirectory) {
+          validateWorkingDirectory(target, context);
         }
         currentDir = target;
       }
@@ -345,81 +357,58 @@ class CLIServer {
           }
 
           const shellKey = args.shell as keyof typeof this.config.shells;
-          const shellConfig = this.config.shells[shellKey];
-          if (!shellConfig) {
+          const resolvedShellConfig = getResolvedShellConfig(this.config, shellKey);
+          if (!resolvedShellConfig) {
             throw new McpError(
               ErrorCode.InvalidRequest,
               `Shell '${shellKey}' is not configured or enabled`
             );
           }
 
-          if (this.config.security.restrictWorkingDirectory) {
+          // Create validation context
+          const validationContext = createValidationContext(shellKey, resolvedShellConfig);
+
+          // Validate working directory with context
+          if (args.workingDir) {
             try {
-              if (shellKey === 'wsl') {
-                validateWslWorkingDirectory(workingDir, Array.from(this.allowedPaths));
-              } else {
-                validateWorkingDirectory(workingDir, Array.from(this.allowedPaths));
-              }
+              validateWorkingDirectory(args.workingDir, validationContext);
             } catch (error: any) {
-              let originalWorkingDir = args.workingDir ? args.workingDir : process.cwd();
               const detailMessage = error && typeof error.message === 'string' ? error.message : String(error);
               throw new McpError(
                 ErrorCode.InvalidRequest,
-                `Working directory (${originalWorkingDir}) outside allowed paths. Original error: ${detailMessage}. Use validate_directories tool to validate directories before execution.`
+                `Working directory (${args.workingDir}) validation failed: ${detailMessage}. Use validate_directories tool to check allowed paths.`
               );
-            }
-          }
-
-          // Validate command (including chained operations)
-          this.validateCommand(shellConfig, args.command, workingDir); // Pass shellConfig (already resolved)
-
-          // Determine CWD for spawn: For WSL emulator, use a valid Linux path.
-          // workingDir here is already normalizeWindowsPath(args.workingDir)
-          let effectiveSpawnCwd = workingDir;
-          if (shellKey === 'wsl') {
-            // The wsl.sh emulator runs on Linux. Its CWD must be a valid Linux path.
-            // args.workingDir (e.g. /mnt/c/tad/sub) is the conceptual WSL CWD.
-            // For the emulator, we just run it in a known valid Linux CWD.
-            // The actual CWD validation against allowedPaths has already passed using normalized paths.
-          // This previous validation was for Windows paths.
-          // For WSL, we need to validate the conceptual WSL working directory.
-
-          let pathForWslValidation: string;
-          if (args.workingDir) {
-            // If user provided workingDir for WSL, assume it's a WSL-style path.
-            // Normalize it for consistency.
-            pathForWslValidation = path.posix.normalize(args.workingDir);
-            // Consistent trailing slash removal (unless root)
-            if (pathForWslValidation !== '/' && pathForWslValidation.endsWith('/')) {
-              pathForWslValidation = pathForWslValidation.slice(0, -1);
             }
           } else {
-            // If no workingDir provided for WSL command, validate WSL equivalent of host's CWD.
-            try {
-              pathForWslValidation = convertWindowsToWslPath(workingDir, shellConfig.wslMountPoint || '/mnt/');
-            } catch (error: any) {
-              throw new McpError(
-                ErrorCode.InvalidRequest,
-                `Failed to convert host current working directory (${process.cwd()}) to WSL path for validation: ${error.message}`
-              );
+            if (!this.serverActiveCwd) {
+              return {
+                content: [{
+                  type: "text",
+                  text: "Error: Server's active working directory is not set."
+                }],
+                isError: true,
+                metadata: {}
+              };
             }
+            workingDir = this.serverActiveCwd;
           }
 
-          if (this.config.security.restrictWorkingDirectory) {
-            try {
-              // Validate this conceptual WSL working directory.
-              validateWslWorkingDirectory(pathForWslValidation, Array.from(this.allowedPaths));
-            } catch (error: any) {
-              throw new McpError(
-                ErrorCode.InvalidRequest,
-                `WSL working directory validation failed: ${error.message}. Use validate_directories tool to check allowed paths.`
-              );
-            }
-          }
+          // Validate command with context
+          this.validateCommand(validationContext, args.command, workingDir);
 
-          // For the wsl.sh SCRIPT itself, it runs in the project root on the host.
-          // The wsl.sh script is responsible for setting the correct CWD *inside* WSL if needed.
-            effectiveSpawnCwd = process.cwd(); // e.g., /app
+          // Determine CWD for spawn based on shell type
+          let effectiveSpawnCwd = workingDir;
+          
+          // For WSL, we need special handling
+          if (validationContext.isWslShell) {
+            // The wsl.sh emulator runs on Linux. For WSL commands, we'll run the script
+            // in the project root and let the emulator handle setting the correct path
+            effectiveSpawnCwd = process.cwd();
+          } 
+          // For GitBash, ensure Windows-style paths for Node.js spawn
+          else if (validationContext.shellName === 'gitbash' && workingDir.startsWith('/')) {
+            // Convert GitBash-style path to Windows path for spawn
+            effectiveSpawnCwd = normalizeWindowsPath(workingDir);
           }
 
           // Execute command
@@ -550,13 +539,24 @@ class CLIServer {
             path: z.string()
           }).parse(toolParams.arguments);
 
-          // Normalize the path
-          const newDir = normalizeWindowsPath(args.path);
+          // Determine if this is a GitBash-style path and handle accordingly
+          let newDir = args.path;
+          // If it's a GitBash path, normalize it to Windows format for Node.js
+          if (args.path.match(/^\/[a-z]\//i)) {
+            newDir = normalizeWindowsPath(args.path);
+          }
 
           // Validate the path
           try {
             if (this.config.security.restrictWorkingDirectory) {
-              validateWorkingDirectory(newDir, Array.from(this.allowedPaths));
+              // Create a generic Windows validation context for directory validation
+              const shellKey = 'cmd';
+              const resolvedShellConfig = getResolvedShellConfig(this.config, shellKey);
+              if (!resolvedShellConfig) {
+                throw new McpError(ErrorCode.InvalidRequest, 'Failed to resolve shell configuration');
+              }
+              const validationContext = createValidationContext(shellKey, resolvedShellConfig);
+              validateWorkingDirectory(newDir, validationContext);
             }
 
             // Change directory and update server state

@@ -1,5 +1,5 @@
 import path from 'path';
-import type { ShellConfig } from '../types/config.js';
+import type { ValidationContext } from './validationContext.js';
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js"; // Import McpError and ErrorCode
 
 export function extractCommandName(command: string): string {
@@ -11,17 +11,27 @@ export function extractCommandName(command: string): string {
     return basename.replace(/\.(exe|cmd|bat)$/i, '').toLowerCase();
 }
 
-export function isCommandBlocked(command: string, blockedCommands: string[]): boolean {
+export function isCommandBlocked(command: string, context: ValidationContext): boolean {
     const commandName = extractCommandName(command.toLowerCase());
-    return blockedCommands.some(blocked => 
-        commandName === blocked.toLowerCase() ||
-        commandName === `${blocked.toLowerCase()}.exe` ||
-        commandName === `${blocked.toLowerCase()}.cmd` ||
-        commandName === `${blocked.toLowerCase()}.bat`
-    );
+    const blockedCommands = context.shellConfig.restrictions.blockedCommands;
+    
+    return blockedCommands.some(blocked => {
+        // Handle complex commands like "rm -rf /"
+        if (blocked.includes(' ')) {
+            return command.toLowerCase().startsWith(blocked.toLowerCase());
+        }
+        
+        // Standard command blocking
+        return commandName === blocked.toLowerCase() ||
+               commandName === `${blocked.toLowerCase()}.exe` ||
+               commandName === `${blocked.toLowerCase()}.cmd` ||
+               commandName === `${blocked.toLowerCase()}.bat`;
+    });
 }
 
-export function isArgumentBlocked(args: string[], blockedArguments: string[]): boolean {
+export function isArgumentBlocked(args: string[], context: ValidationContext): boolean {
+    const blockedArguments = context.shellConfig.restrictions.blockedArguments;
+    
     return args.some(arg => 
         blockedArguments.some(blocked => 
             new RegExp(`^${blocked}$`, 'i').test(arg)
@@ -32,19 +42,21 @@ export function isArgumentBlocked(args: string[], blockedArguments: string[]): b
 /**
  * Validates a command for a specific shell, checking for shell-specific blocked operators
  */
-export function validateShellOperators(command: string, shellConfig: ShellConfig): void {
-    // Skip validation if shell doesn't specify blocked operators
-    if (!shellConfig.blockedOperators?.length) {
+export function validateShellOperators(command: string, context: ValidationContext): void {
+    const blockedOperators = context.shellConfig.restrictions.blockedOperators;
+    
+    if (!blockedOperators || blockedOperators.length === 0) {
         return;
     }
 
-    // Create regex pattern from blocked operators
-    // Iterate and test each operator to identify the specific one found.
-    for (const op of shellConfig.blockedOperators) {
-        const escapedOp = op.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // Escape for regex
+    for (const op of blockedOperators) {
+        const escapedOp = op.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const regex = new RegExp(escapedOp);
         if (regex.test(command)) {
-            throw new McpError(ErrorCode.InvalidRequest, `Command contains blocked operator: ${op}`);
+            throw new McpError(
+                ErrorCode.InvalidRequest, 
+                `Command contains blocked operator for ${context.shellName}: ${op}`
+            );
         }
     }
 }
@@ -182,26 +194,29 @@ export function convertWindowsToWslPath(windowsPath: string, mountPoint: string 
   return windowsPath;
 }
 
-export function resolveWslAllowedPaths(globalAllowedPaths: string[], wslConfig?: ShellConfig): string[] {
-  if (!wslConfig) {
+export function resolveWslAllowedPaths(globalAllowedPaths: string[], context: ValidationContext): string[] {
+  if (!context.isWslShell || !context.shellConfig.wslConfig) {
     return [];
   }
   const wslPaths: string[] = [];
-  const mountPoint = wslConfig.wslMountPoint || '/mnt/';
+  const mountPoint = context.shellConfig.wslConfig.mountPoint || '/mnt/';
 
-  if (wslConfig.allowedPaths && wslConfig.allowedPaths.length > 0) {
-    wslConfig.allowedPaths.forEach(p => {
+  // Add directly configured WSL paths
+  const shellAllowedPaths = context.shellConfig.paths.allowedPaths;
+  if (shellAllowedPaths && shellAllowedPaths.length > 0) {
+    shellAllowedPaths.forEach((p: string) => {
       if (!wslPaths.includes(p)) {
         wslPaths.push(p);
       }
     });
   }
 
-  if (wslConfig.inheritGlobalPaths !== false) { // True or undefined
+  // Add converted global paths if enabled
+  if (context.shellConfig.wslConfig.inheritGlobalPaths !== false) { // True or undefined
     globalAllowedPaths.forEach(globalPath => {
       try {
         const convertedPath = convertWindowsToWslPath(globalPath, mountPoint);
-        // Add if not already present (either from wslConfig.allowedPaths or a previous conversion)
+        // Add if not already present (either from shellAllowedPaths or a previous conversion)
         if (!wslPaths.includes(convertedPath)) {
           wslPaths.push(convertedPath);
         }
@@ -280,15 +295,20 @@ export function isPathAllowed(testPath: string, allowedPaths: string[]): boolean
     });
 }
 
-export function validateWorkingDirectory(dir: string, allowedPaths: string[]): void {
+// This function is now replaced by validateWorkingDirectory in pathValidation.ts
+export function validateWindowsWorkingDirectory(dir: string, allowedPaths: string[]): void {
     const isWindowsDriveAbsolute = /^[a-zA-Z]:\\/.test(dir);
     if (!isWindowsDriveAbsolute && !path.isAbsolute(dir)) {
-        throw new Error('Working directory must be an absolute path');
+        throw new McpError(
+            ErrorCode.InvalidRequest,
+            'Working directory must be an absolute path'
+        );
     }
 
     if (!isPathAllowed(dir, allowedPaths)) {
         const allowedPathsStr = allowedPaths.join(', ');
-        throw new Error(
+        throw new McpError(
+            ErrorCode.InvalidRequest,
             `Working directory must be within allowed paths: ${allowedPathsStr}`
         );
     }

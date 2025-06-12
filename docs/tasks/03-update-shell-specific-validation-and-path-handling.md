@@ -998,36 +998,36 @@ Override security settings per shell:
 
 ### Functional Requirements
 
-- [ ] Each shell validates paths according to its expected format
-- [ ] Windows shells reject Unix-style paths
-- [ ] WSL rejects Windows-style paths
-- [ ] Git Bash accepts both path formats
-- [ ] Shell-specific blocked commands/arguments/operators work correctly
-- [ ] Command length limits are enforced per shell
-- [ ] Error messages clearly indicate which shell and rule caused rejection
+- [x] Each shell validates paths according to its expected format
+- [x] Windows shells reject Unix-style paths
+- [x] WSL rejects Windows-style paths
+- [x] Git Bash accepts both path formats
+- [x] Shell-specific blocked commands/arguments/operators work correctly
+- [x] Command length limits are enforced per shell
+- [x] Error messages clearly indicate which shell and rule caused rejection
 
 ### Technical Requirements
 
-- [ ] Validation context properly identifies shell types
-- [ ] Path normalization handles all format conversions
-- [ ] No hardcoded shell names in validation logic
-- [ ] Validation functions are pure (no side effects)
-- [ ] All validation errors include helpful context
+- [x] Validation context properly identifies shell types
+- [x] Path normalization handles all format conversions
+- [x] No hardcoded shell names in validation logic
+- [x] Validation functions are pure (no side effects)
+- [x] All validation errors include helpful context
 
 ### Testing Requirements
 
-- [ ] Unit tests for each shell type's validation
-- [ ] Tests for path format detection and normalization
-- [ ] Tests for cross-format path validation (Git Bash)
-- [ ] Tests for all blocked lists (commands, arguments, operators)
-- [ ] Edge case tests (empty paths, malformed paths)
-- [ ] Error message content validation
+- [x] Unit tests for each shell type's validation
+- [x] Tests for path format detection and normalization
+- [x] Tests for cross-format path validation (Git Bash)
+- [x] Tests for all blocked lists (commands, arguments, operators)
+- [x] Edge case tests (empty paths, malformed paths)
+- [x] Error message content validation
 
 ### Documentation Requirements
 
-- [ ] Validation architecture documented
-- [ ] Shell-specific validation rules documented
-- [ ] Path format examples for each shell
+- [x] Validation architecture documented
+- [x] Shell-specific validation rules documented
+- [x] Path format examples for each shell
 
 ## Risk Assessment
 
