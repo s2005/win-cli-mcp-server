@@ -1,69 +1,89 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { ServerConfig, ShellConfig } from '../types/config.js';
+import { ServerConfig, ResolvedShellConfig } from '../types/config.js';
 import { normalizeWindowsPath, normalizeAllowedPaths } from './validation.js';
+import { resolveShellConfiguration, applyWslPathInheritance } from './configMerger.js';
 
 const defaultValidatePathRegex = /^[a-zA-Z]:\\(?:[^<>:"/\\|?*]+\\)*[^<>:"/\\|?*]*$/;
 
-export const DEFAULT_WSL_CONFIG: ShellConfig = {
-  enabled: true,
-  command: 'wsl.exe',
-  args: ['-e'],
-  // Basic WSL path validation: starts with /mnt/<drive>/ or is a Linux-like absolute path.
-  validatePath: (dir: string) => /^(\/mnt\/[a-zA-Z]\/|\/)/.test(dir),
-  blockedOperators: ['&', '|', ';', '`'],
-  allowedPaths: [],
-  wslMountPoint: '/mnt/',
-  inheritGlobalPaths: true
-};
-
 export const DEFAULT_CONFIG: ServerConfig = {
-  security: {
-    maxCommandLength: 2000,
-    blockedCommands: [
-      'rm', 'del', 'rmdir', 'format',
-      'shutdown', 'restart',
-      'reg', 'regedit',
-      'net', 'netsh',
-      'takeown', 'icacls'
-    ],
-    blockedArguments: [
-      "--exec", "-e", "/c", "-enc", "-encodedcommand",
-      "-command", "--interactive", "-i", "--login", "--system"
-    ],
-    initialDir: undefined,
-    allowedPaths: [
-      os.homedir(),
-      process.cwd()
-    ],
-    restrictWorkingDirectory: true,
-    commandTimeout: 30,
-    enableInjectionProtection: true
+  global: {
+    security: {
+      maxCommandLength: 2000,
+      commandTimeout: 30,
+      enableInjectionProtection: true,
+      restrictWorkingDirectory: true
+    },
+    restrictions: {
+      blockedCommands: [
+        'format', 'shutdown', 'restart',
+        'reg', 'regedit',
+        'net', 'netsh',
+        'takeown', 'icacls'
+      ],
+      blockedArguments: [
+        "--exec", "-e", "/c", "-enc", "-encodedcommand",
+        "-command", "--interactive", "-i", "--login", "--system"
+      ],
+      blockedOperators: ['&', '|', ';', '`']
+    },
+    paths: {
+      allowedPaths: [
+        os.homedir(),
+        process.cwd()
+      ],
+      initialDir: undefined
+    }
   },
   shells: {
     powershell: {
       enabled: true,
-      command: 'powershell.exe',
-      args: ['-NoProfile', '-NonInteractive', '-Command'],
-      validatePath: (dir: string) => dir.match(defaultValidatePathRegex) !== null,
-      blockedOperators: ['&', '|', ';', '`']
+      executable: {
+        command: 'powershell.exe',
+        args: ['-NoProfile', '-NonInteractive', '-Command']
+      },
+      validatePath: (dir: string) => /^[a-zA-Z]:\\/.test(dir)
     },
     cmd: {
       enabled: true,
-      command: 'cmd.exe',
-      args: ['/c'],
-      validatePath: (dir: string) => dir.match(defaultValidatePathRegex) !== null,
-      blockedOperators: ['&', '|', ';', '`']
+      executable: {
+        command: 'cmd.exe',
+        args: ['/c']
+      },
+      validatePath: (dir: string) => /^[a-zA-Z]:\\/.test(dir),
+      overrides: {
+        restrictions: {
+          blockedCommands: ['del', 'rd', 'rmdir']
+        }
+      }
     },
     gitbash: {
       enabled: true,
-      command: 'C:\\Program Files\\Git\\bin\\bash.exe',
-      args: ['-c'],
-      validatePath: (dir: string) => dir.match(defaultValidatePathRegex) !== null,
-      blockedOperators: ['&', '|', ';', '`']
+      executable: {
+        command: 'C:\\Program Files\\Git\\bin\\bash.exe',
+        args: ['-c']
+      },
+      validatePath: (dir: string) => /^([a-zA-Z]:\\|\/[a-z]\/)/.test(dir),
+      overrides: {
+        restrictions: {
+          blockedCommands: ['rm']
+        }
+      }
+    },
+    wsl: {
+      enabled: true,
+      executable: {
+        command: 'wsl.exe',
+        args: ['-e']
+      },
+      validatePath: (dir: string) => /^(\/mnt\/[a-zA-Z]\/|\/)/.test(dir),
+      wslConfig: {
+        mountPoint: '/mnt/',
+        inheritGlobalPaths: true
+      }
     }
-  },
+  }
 };
 
 export function loadConfig(configPath?: string): ServerConfig {
@@ -90,105 +110,181 @@ export function loadConfig(configPath?: string): ServerConfig {
     }
   }
 
-  // Use defaults only if no config was loaded
-  const mergedConfig = Object.keys(loadedConfig).length > 0
+  // Use defaults if no config was loaded or merge with loaded config
+  const config = Object.keys(loadedConfig).length > 0
     ? mergeConfigs(DEFAULT_CONFIG, loadedConfig)
-    : DEFAULT_CONFIG;
-
+    : { ...DEFAULT_CONFIG };
+  
   // Validate and process initialDir if provided
-  if (mergedConfig.security.initialDir && typeof mergedConfig.security.initialDir === 'string') {
-    const normalizedInitialDir = normalizeWindowsPath(mergedConfig.security.initialDir);
+  if (config.global.paths.initialDir) {
+    const normalizedInitialDir = normalizeWindowsPath(config.global.paths.initialDir);
     if (fs.existsSync(normalizedInitialDir) && fs.statSync(normalizedInitialDir).isDirectory()) {
-      mergedConfig.security.initialDir = normalizedInitialDir;
-      if (mergedConfig.security.restrictWorkingDirectory) {
-        if (!mergedConfig.security.allowedPaths.includes(normalizedInitialDir)) {
-          mergedConfig.security.allowedPaths.push(normalizedInitialDir);
+      config.global.paths.initialDir = normalizedInitialDir;
+      if (config.global.security.restrictWorkingDirectory) {
+        if (!config.global.paths.allowedPaths.includes(normalizedInitialDir)) {
+          config.global.paths.allowedPaths.push(normalizedInitialDir);
         }
-        mergedConfig.security.allowedPaths = normalizeAllowedPaths(mergedConfig.security.allowedPaths);
       }
     } else {
-      console.warn(`WARN: Configured initialDir '${mergedConfig.security.initialDir}' does not exist or is not a directory. Falling back to default CWD behavior.`);
-      mergedConfig.security.initialDir = undefined;
+      console.warn(`WARN: Configured initialDir '${config.global.paths.initialDir}' does not exist.`);
+      config.global.paths.initialDir = undefined;
     }
-  } else if (mergedConfig.security.initialDir !== undefined) {
-    console.warn(`WARN: Configured initialDir is not a valid string. Falling back to default CWD behavior.`);
-    mergedConfig.security.initialDir = undefined;
   }
+  
+  // Normalize allowed paths
+  config.global.paths.allowedPaths = normalizeAllowedPaths(
+    config.global.paths.allowedPaths
+  );
+  
+  return config;
+}
 
-  // Normalize and dedupe allowedPaths
-  mergedConfig.security.allowedPaths = normalizeAllowedPaths(mergedConfig.security.allowedPaths);
-
-
-  // Validate the merged config
-  validateConfig(mergedConfig);
-
-  return mergedConfig;
+/**
+ * Get resolved configuration for a specific shell
+ */
+export function getResolvedShellConfig(
+  config: ServerConfig,
+  shellName: keyof ServerConfig['shells']
+): ResolvedShellConfig | null {
+  const shell = config.shells[shellName];
+  if (!shell || !shell.enabled) {
+    return null;
+  }
+  
+  let resolved = resolveShellConfiguration(config.global, shell);
+  
+  // Special handling for WSL path inheritance
+  if (shellName === 'wsl' && resolved.wslConfig) {
+    resolved = applyWslPathInheritance(resolved, config.global.paths.allowedPaths);
+  }
+  
+  return resolved;
 }
 
 function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<ServerConfig>): ServerConfig {
   const merged: ServerConfig = {
-    security: {
-      // Start with defaults then override with any user supplied options
-      ...defaultConfig.security,
-      ...(userConfig.security || {})
+    global: {
+      security: {
+        // Start with defaults then override with any user supplied options
+        ...defaultConfig.global.security,
+        ...(userConfig.global?.security || {})
+      },
+      restrictions: {
+        ...defaultConfig.global.restrictions,
+        ...(userConfig.global?.restrictions || {})
+      },
+      paths: {
+        ...defaultConfig.global.paths,
+        ...(userConfig.global?.paths || {})
+      }
     },
     shells: {}
   };
 
-  // Remove deprecated includeDefaultWSL if present
-  delete (merged.security as any).includeDefaultWSL;
-
   // Determine which shells should be included
-  const shouldIncludePowerShell = userConfig.shells?.powershell !== undefined;
-  const shouldIncludeCmd = userConfig.shells?.cmd !== undefined;
-  const shouldIncludeGitBash = userConfig.shells?.gitbash !== undefined;
-  const shouldIncludeWSL = userConfig.shells?.wsl !== undefined;
+  const shouldIncludePowerShell = userConfig.shells?.powershell !== undefined || defaultConfig.shells.powershell !== undefined;
+  const shouldIncludeCmd = userConfig.shells?.cmd !== undefined || defaultConfig.shells.cmd !== undefined;
+  const shouldIncludeGitBash = userConfig.shells?.gitbash !== undefined || defaultConfig.shells.gitbash !== undefined;
+  const shouldIncludeWSL = userConfig.shells?.wsl !== undefined || defaultConfig.shells.wsl !== undefined;
 
+  // Add each shell, ensuring required properties are always set
   if (shouldIncludePowerShell) {
+    const baseShell = defaultConfig.shells.powershell || {
+      enabled: false,
+      executable: { command: '', args: [] }
+    };
     merged.shells.powershell = {
-      ...defaultConfig.shells.powershell,
-      ...(userConfig.shells?.powershell || {})
-    } as ShellConfig;
+      // Start with defaults
+      ...baseShell,
+      // Override with user config
+      ...(userConfig.shells?.powershell || {}),
+      // Ensure required properties
+      enabled: (userConfig.shells?.powershell?.enabled !== undefined) ? 
+        userConfig.shells.powershell.enabled : 
+        (baseShell.enabled !== undefined ? baseShell.enabled : true)
+    };
+    // Ensure executable is properly set
+    if (!merged.shells.powershell.executable) {
+      merged.shells.powershell.executable = { command: '', args: [] };
+    }
   }
 
   if (shouldIncludeCmd) {
+    const baseShell = defaultConfig.shells.cmd || {
+      enabled: false,
+      executable: { command: '', args: [] }
+    };
     merged.shells.cmd = {
-      ...defaultConfig.shells.cmd,
-      ...(userConfig.shells?.cmd || {})
-    } as ShellConfig;
+      // Start with defaults
+      ...baseShell,
+      // Override with user config
+      ...(userConfig.shells?.cmd || {}),
+      // Ensure required properties
+      enabled: (userConfig.shells?.cmd?.enabled !== undefined) ? 
+        userConfig.shells.cmd.enabled : 
+        (baseShell.enabled !== undefined ? baseShell.enabled : true)
+    };
+    // Ensure executable is properly set
+    if (!merged.shells.cmd.executable) {
+      merged.shells.cmd.executable = { command: '', args: [] };
+    }
   }
 
   if (shouldIncludeGitBash) {
+    const baseShell = defaultConfig.shells.gitbash || {
+      enabled: false,
+      executable: { command: '', args: [] }
+    };
     merged.shells.gitbash = {
-      ...defaultConfig.shells.gitbash,
-      ...(userConfig.shells?.gitbash || {})
-    } as ShellConfig;
+      // Start with defaults
+      ...baseShell,
+      // Override with user config
+      ...(userConfig.shells?.gitbash || {}),
+      // Ensure required properties
+      enabled: (userConfig.shells?.gitbash?.enabled !== undefined) ? 
+        userConfig.shells.gitbash.enabled : 
+        (baseShell.enabled !== undefined ? baseShell.enabled : true)
+    };
+    // Ensure executable is properly set
+    if (!merged.shells.gitbash.executable) {
+      merged.shells.gitbash.executable = { command: '', args: [] };
+    }
   }
 
   if (shouldIncludeWSL) {
+    const baseShell = defaultConfig.shells.wsl || {
+      enabled: false,
+      executable: { command: '', args: [] },
+      wslConfig: {
+        mountPoint: '/mnt/',
+        inheritGlobalPaths: true
+      }
+    };
     merged.shells.wsl = {
-      ...DEFAULT_WSL_CONFIG,
-      ...(userConfig.shells?.wsl || {})
-    } as ShellConfig;
-  }
-
-  // Only add validatePath functions and blocked operators if they don't exist
-  for (const [key, shell] of Object.entries(merged.shells) as [keyof typeof merged.shells, ShellConfig][]) {
-    // Get the appropriate default config
-    let defaultShellForKey: ShellConfig | undefined;
-    if (key === 'wsl') {
-      defaultShellForKey = DEFAULT_WSL_CONFIG;
-    } else if (key in defaultConfig.shells) {
-      defaultShellForKey = defaultConfig.shells[key as keyof typeof defaultConfig.shells];
-    }
-
-    if (defaultShellForKey) {
-      if (!shell.validatePath) {
-        shell.validatePath = defaultShellForKey.validatePath;
+      // Start with defaults
+      ...baseShell,
+      // Override with user config
+      ...(userConfig.shells?.wsl || {}),
+      // Ensure required properties
+      enabled: (userConfig.shells?.wsl?.enabled !== undefined) ? 
+        userConfig.shells.wsl.enabled : 
+        (baseShell.enabled !== undefined ? baseShell.enabled : true),
+      // Ensure wslConfig exists with default values if not provided
+      wslConfig: {
+        ...((baseShell as any).wslConfig || {}),
+        ...((userConfig.shells?.wsl as any)?.wslConfig || {}),
+        mountPoint: ((userConfig.shells?.wsl as any)?.wslConfig?.mountPoint !== undefined) ? 
+          (userConfig.shells?.wsl as any).wslConfig.mountPoint : 
+          ((baseShell as any).wslConfig?.mountPoint || '/mnt/'),
+        inheritGlobalPaths: ((userConfig.shells?.wsl as any)?.wslConfig?.inheritGlobalPaths !== undefined) ? 
+          (userConfig.shells?.wsl as any).wslConfig.inheritGlobalPaths : 
+          ((baseShell as any).wslConfig?.inheritGlobalPaths !== undefined ? 
+           (baseShell as any).wslConfig.inheritGlobalPaths : true)
       }
-      if (!shell.blockedOperators) {
-        shell.blockedOperators = defaultShellForKey.blockedOperators;
-      }
+    };
+    // Ensure executable is properly set
+    if (!merged.shells.wsl.executable) {
+      merged.shells.wsl.executable = { command: '', args: [] };
     }
   }
 
@@ -197,19 +293,19 @@ function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<ServerCon
 
 function validateConfig(config: ServerConfig): void {
   // Validate security settings
-  if (config.security.maxCommandLength < 1) {
+  if (config.global.security.maxCommandLength < 1) {
     throw new Error('maxCommandLength must be positive');
   }
 
   // Validate shell configurations
   for (const [shellName, shell] of Object.entries(config.shells)) {
-    if (shell.enabled && (!shell.command || !shell.args)) {
-      throw new Error(`Invalid configuration for ${shellName}: missing command or args`);
+    if (shell.enabled && (!shell.executable?.command || !shell.executable?.args)) {
+      throw new Error(`Invalid configuration for ${shellName}: missing executable command or args`);
     }
   }
 
   // Validate timeout (minimum 1 second)
-  if (config.security.commandTimeout < 1) {
+  if (config.global.security.commandTimeout < 1) {
     throw new Error('commandTimeout must be at least 1 second');
   }
 }
@@ -224,5 +320,13 @@ export function createDefaultConfig(configPath: string): void {
 
   // Create a JSON-safe version of the config (excluding functions)
   const configForSave = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+  
+  // Remove validatePath functions as they can't be serialized to JSON
+  for (const shellName in configForSave.shells) {
+    if (configForSave.shells[shellName]) {
+      delete configForSave.shells[shellName].validatePath;
+    }
+  }
+  
   fs.writeFileSync(configPath, JSON.stringify(configForSave, null, 2));
 }
