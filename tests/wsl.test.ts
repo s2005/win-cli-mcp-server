@@ -19,19 +19,52 @@ describe('WSL Shell Execution via Emulator (Tests 1-4)', () => {
 
   beforeEach(() => {
     testConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
-    testConfig.shells.wsl = {
-      enabled: true,
-      command: 'node', // Use Node.js to run the JS emulator
-      args: [wslEmulatorPath, '-e'], // Pass emulator path
-      validatePath: (dir: string) => /^(\/mnt\/[a-zA-Z]\/|\/)/.test(dir),
-      blockedOperators: ['&', '|', ';', '`']
-    };
-    testConfig.shells.cmd.enabled = false;
-    testConfig.shells.powershell.enabled = false;
-    testConfig.shells.gitbash.enabled = false;
-    testConfig.security.restrictWorkingDirectory = false;
-    testConfig.security.enableInjectionProtection = true;
-    testConfig.security.blockedArguments = testConfig.security.blockedArguments.filter(arg => arg !== '-e');
+    
+    // Configure shells
+    if (testConfig.shells) {
+      // Setup WSL shell with emulator
+      testConfig.shells.wsl = {
+        enabled: true,
+        executable: {
+          command: 'node',
+          args: [wslEmulatorPath, '-e']
+        },
+        overrides: {
+          restrictions: {
+            blockedOperators: ['&', '|', ';', '`']
+          }
+        },
+        wslConfig: {
+          mountPoint: '/mnt/',
+          inheritGlobalPaths: true,
+          pathMapping: {
+            enabled: true,
+            windowsToWsl: true
+          }
+        }
+      };
+      
+      // Disable other shells
+      if (testConfig.shells.cmd) testConfig.shells.cmd.enabled = false;
+      if (testConfig.shells.powershell) testConfig.shells.powershell.enabled = false;
+      if (testConfig.shells.gitbash) testConfig.shells.gitbash.enabled = false;
+    }
+    
+    // Update global config
+    if (testConfig.global) {
+      // Security settings
+      if (testConfig.global.security) {
+        testConfig.global.security.restrictWorkingDirectory = false;
+        testConfig.global.security.enableInjectionProtection = true;
+      }
+      
+      // Remove -e from blocked args
+      if (testConfig.global.restrictions && testConfig.global.restrictions.blockedArguments) {
+        testConfig.global.restrictions.blockedArguments = 
+          testConfig.global.restrictions.blockedArguments.filter(arg => arg !== '-e');
+      }
+    }
+    
     serverInstance = new CLIServer(testConfig);
   });
 
@@ -77,7 +110,7 @@ describe('WSL Shell Execution via Emulator (Tests 1-4)', () => {
     } catch (e: any) {
       expect(e).toBeInstanceOf(McpError);
       expect(e.code).toBe(ErrorCode.InvalidRequest);
-      expect(e.message).toContain('Command contains blocked operator: ;');
+      expect(e.message).toContain('Command contains blocked operator for wsl: ;');
     }
   });
 
@@ -126,24 +159,58 @@ describe('WSL Working Directory Validation (Test 5)', () => { // Removed .only
 
   beforeEach(() => {
     cwdTestConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
-    cwdTestConfig.shells.wsl = {
-      enabled: true,
-      command: 'node', // Use Node.js to run the JS emulator
-      args: [wslEmulatorPath, '-e'], // Pass emulator path
-      validatePath: (dir: string) => /^(\/mnt\/[a-zA-Z]\/|\/)/.test(dir),
-      blockedOperators: ['&', '|', ';', '`']
-    };
-    cwdTestConfig.shells.cmd.enabled = false;
-    cwdTestConfig.shells.powershell.enabled = false;
-    cwdTestConfig.shells.gitbash.enabled = false;
-
-    cwdTestConfig.security.restrictWorkingDirectory = true; // Enable CWD restriction
-    cwdTestConfig.security.enableInjectionProtection = false; // Not the focus of these tests
-
-    // Using simplified "tad" for "test_allowed_dir"
-    // For WSL CWD tests, allowedPaths should also be in WSL format for consistent comparison
-    // as normalizeWindowsPath now preserves /mnt/* paths.
-    cwdTestConfig.security.allowedPaths = ['/mnt/c/tad']; // Changed from C:\\tad
+    
+    // Configure shells
+    if (cwdTestConfig.shells) {
+      // Setup WSL shell with emulator
+      cwdTestConfig.shells.wsl = {
+        enabled: true,
+        executable: {
+          command: 'node',
+          args: [wslEmulatorPath, '-e']
+        },
+        overrides: {
+          restrictions: {
+            blockedOperators: ['&', '|', ';', '`']
+          }
+        },
+        wslConfig: {
+          mountPoint: '/mnt/',
+          inheritGlobalPaths: true,
+          pathMapping: {
+            enabled: true,
+            windowsToWsl: true
+          }
+        }
+      };
+      
+      // Disable other shells
+      if (cwdTestConfig.shells.cmd) cwdTestConfig.shells.cmd.enabled = false;
+      if (cwdTestConfig.shells.powershell) cwdTestConfig.shells.powershell.enabled = false;
+      if (cwdTestConfig.shells.gitbash) cwdTestConfig.shells.gitbash.enabled = false;
+    }
+    
+    // Update global config
+    if (cwdTestConfig.global) {
+      // Security settings
+      if (cwdTestConfig.global.security) {
+        cwdTestConfig.global.security.restrictWorkingDirectory = true;
+        cwdTestConfig.global.security.enableInjectionProtection = false;
+      }
+      
+      // Path settings
+      if (cwdTestConfig.global.paths) {
+        // Using simplified "tad" for "test_allowed_dir"
+        // For WSL CWD tests, allowedPaths should also be in WSL format for consistent comparison
+        cwdTestConfig.global.paths.allowedPaths = ['/mnt/c/tad'];
+      }
+      
+      // Remove -e from blocked args
+      if (cwdTestConfig.global.restrictions && cwdTestConfig.global.restrictions.blockedArguments) {
+        cwdTestConfig.global.restrictions.blockedArguments = 
+          cwdTestConfig.global.restrictions.blockedArguments.filter(arg => arg !== '-e');
+      }
+    }
 
     serverInstanceForCwdTest = new CLIServer(cwdTestConfig);
   });
@@ -177,14 +244,16 @@ describe('WSL Working Directory Validation (Test 5)', () => { // Removed .only
 
   test('Test 5.1.1: Valid WSL working directory (/tmp)', async () => {
     // Reconfigure allowedPaths for this test to include a typical Linux path
-    // that does not undergo mnt/c style normalization.
-    serverInstanceForCwdTest = new CLIServer({
-      ...cwdTestConfig,
-      security: {
-        ...cwdTestConfig.security,
-        allowedPaths: ['/tmp'] // Allow /tmp directly
-      }
-    });
+    // Create a deep copy of the config and update properly with inheritance structure
+    const tmpConfig = JSON.parse(JSON.stringify(cwdTestConfig));
+    
+    // Update the allowed paths in the global.paths property
+    if (tmpConfig.global && tmpConfig.global.paths) {
+      tmpConfig.global.paths.allowedPaths = ['/tmp'];
+    }
+    
+    // Create a new server with the updated config
+    serverInstanceForCwdTest = new CLIServer(tmpConfig);
 
     const wslTmpPath = '/tmp';
     const result = await serverInstanceForCwdTest._executeTool({
@@ -222,9 +291,9 @@ describe('WSL Working Directory Validation (Test 5)', () => { // Removed .only
     } catch (e: any) {
       expect(e).toBeInstanceOf(McpError);
       expect(e.code).toBe(ErrorCode.InvalidRequest);
-      // Message now includes the originally requested path and the normalized path that failed validation.
-      // The path `wslInvalidPath` (/mnt/d/forbidden_dir) is returned as is by normalizeWindowsPath due to recent changes.
-      expect(e.message).toContain(`Working directory (${wslInvalidPath}) outside allowed paths`);
+      // Updated error message format includes the WSL working directory validation message
+      expect(e.message).toContain(`Working directory (${wslInvalidPath}) validation failed`);
+      expect(e.message).toContain('WSL working directory must be within allowed paths');
     }
   });
 
@@ -245,8 +314,9 @@ describe('WSL Working Directory Validation (Test 5)', () => { // Removed .only
     } catch (e: any) {
       expect(e).toBeInstanceOf(McpError);
       expect(e.code).toBe(ErrorCode.InvalidRequest);
-      // The path `wslInvalidPathSuffix` is returned as is.
-      expect(e.message).toContain(`Working directory (${wslInvalidPathSuffix}) outside allowed paths`);
+      // Updated error message format for path suffix case
+      expect(e.message).toContain(`Working directory (${wslInvalidPathSuffix}) validation failed`);
+      expect(e.message).toContain('WSL working directory must be within allowed paths');
     }
   });
 
@@ -267,7 +337,8 @@ describe('WSL Working Directory Validation (Test 5)', () => { // Removed .only
     } catch (e: any) {
       expect(e).toBeInstanceOf(McpError);
       expect(e.code).toBe(ErrorCode.InvalidRequest);
-      expect(e.message).toContain(`Working directory (${wslPureLinuxPath}) outside allowed paths`);
+      expect(e.message).toContain(`Working directory (${wslPureLinuxPath}) validation failed`);
+      expect(e.message).toContain('WSL working directory must be within allowed paths');
     }
   });
 });

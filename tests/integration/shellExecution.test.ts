@@ -12,7 +12,20 @@ describe('Shell Execution Security', () => {
 
   test('should enforce working directory restrictions', async () => {
     const server = new TestCLIServer({
-      security: { restrictWorkingDirectory: true, allowedPaths: ['/allowed'] }
+      global: {
+        security: { 
+          restrictWorkingDirectory: true,
+          maxCommandLength: 8192,
+          commandTimeout: 60,
+          enableInjectionProtection: true
+        },
+        paths: { allowedPaths: ['/allowed'] },
+        restrictions: {
+          blockedCommands: [],
+          blockedArguments: [],
+          blockedOperators: []
+        }
+      }
     });
 
     await expect(
@@ -22,7 +35,20 @@ describe('Shell Execution Security', () => {
 
   test('should execute when working directory allowed', async () => {
     const server = new TestCLIServer({
-      security: { restrictWorkingDirectory: true, allowedPaths: ['/tmp'] }
+      global: {
+        security: { 
+          restrictWorkingDirectory: true,
+          maxCommandLength: 8192,
+          commandTimeout: 60,
+          enableInjectionProtection: true
+        },
+        paths: { allowedPaths: ['/tmp'] },
+        restrictions: {
+          blockedCommands: [],
+          blockedArguments: [],
+          blockedOperators: []
+        }
+      }
     });
 
     const result = await server.executeCommand({ shell: 'wsl', command: 'pwd', workingDir: '/tmp' });

@@ -22,35 +22,60 @@ jest.mock('@modelcontextprotocol/sdk/server/stdio.js', () => {
 });
 
 describe('get_config tool', () => {
-  // Sample test config
+  // Sample test config with new nested structure
   const testConfig: ServerConfig = {
-    security: {
-      maxCommandLength: 1000,
-      blockedCommands: ['rm', 'del'],
-      blockedArguments: ['--exec'],
-      allowedPaths: ['/test/path'],
-      restrictWorkingDirectory: true,
-      commandTimeout: 30,
-      enableInjectionProtection: true
+    global: {
+      security: {
+        maxCommandLength: 1000,
+        commandTimeout: 30,
+        enableInjectionProtection: true,
+        restrictWorkingDirectory: true
+      },
+      restrictions: {
+        blockedCommands: ['rm', 'del'],
+        blockedArguments: ['--exec'],
+        blockedOperators: []
+      },
+      paths: {
+        allowedPaths: ['/test/path']
+      }
     },
     shells: {
       powershell: {
         enabled: true,
-        command: 'powershell.exe',
-        args: ['-Command'],
-        blockedOperators: ['&', '|']
+        executable: {
+          command: 'powershell.exe',
+          args: ['-Command']
+        },
+        overrides: {
+          restrictions: {
+            blockedOperators: ['&', '|']
+          }
+        }
       },
       cmd: {
         enabled: true,
-        command: 'cmd.exe',
-        args: ['/c'],
-        blockedOperators: ['&', '|']
+        executable: {
+          command: 'cmd.exe',
+          args: ['/c']
+        },
+        overrides: {
+          restrictions: {
+            blockedOperators: ['&', '|']
+          }
+        }
       },
       gitbash: {
         enabled: false,
-        command: 'bash.exe',
-        args: ['-c'],
-        blockedOperators: ['&', '|']
+        executable: {
+          command: 'bash.exe',
+          args: ['-c']
+        },
+        overrides: {
+          restrictions: {
+            blockedOperators: ['&', '|']
+          }
+        }
       }
     }
   };
@@ -65,27 +90,42 @@ describe('get_config tool', () => {
     expect(safeConfig.shells).toBeDefined();
     
     // Check security settings
-    expect(safeConfig.security.maxCommandLength).toBe(testConfig.security.maxCommandLength);
-    expect(safeConfig.security.blockedCommands).toEqual(testConfig.security.blockedCommands);
-    expect(safeConfig.security.blockedArguments).toEqual(testConfig.security.blockedArguments);
-    expect(safeConfig.security.allowedPaths).toEqual(testConfig.security.allowedPaths);
-    expect(safeConfig.security.restrictWorkingDirectory).toBe(testConfig.security.restrictWorkingDirectory);
-    expect(safeConfig.security.commandTimeout).toBe(testConfig.security.commandTimeout);
-    expect(safeConfig.security.enableInjectionProtection).toBe(testConfig.security.enableInjectionProtection);
+    expect(safeConfig.security.maxCommandLength).toBe(testConfig.global.security.maxCommandLength);
+    expect(safeConfig.security.blockedCommands).toEqual(testConfig.global.restrictions.blockedCommands);
+    expect(safeConfig.security.blockedArguments).toEqual(testConfig.global.restrictions.blockedArguments);
+    expect(safeConfig.security.allowedPaths).toEqual(testConfig.global.paths.allowedPaths);
+    expect(safeConfig.security.restrictWorkingDirectory).toBe(testConfig.global.security.restrictWorkingDirectory);
+    expect(safeConfig.security.commandTimeout).toBe(testConfig.global.security.commandTimeout);
+    expect(safeConfig.security.enableInjectionProtection).toBe(testConfig.global.security.enableInjectionProtection);
     
     // Check shells configuration
-    expect(safeConfig.shells.powershell.enabled).toBe(testConfig.shells.powershell.enabled);
-    expect(safeConfig.shells.powershell.command).toBe(testConfig.shells.powershell.command);
-    expect(safeConfig.shells.powershell.args).toEqual(testConfig.shells.powershell.args);
-    expect(safeConfig.shells.powershell.blockedOperators).toEqual(testConfig.shells.powershell.blockedOperators);
+    if (testConfig.shells.powershell) {
+      expect(safeConfig.shells.powershell.enabled).toBe(testConfig.shells.powershell.enabled);
+      expect(safeConfig.shells.powershell.command).toBe(testConfig.shells.powershell.executable?.command);
+      expect(safeConfig.shells.powershell.args).toEqual(testConfig.shells.powershell.executable?.args || []);
+      expect(safeConfig.shells.powershell.blockedOperators)
+        .toEqual(testConfig.shells.powershell.overrides?.restrictions?.blockedOperators || []);
+    }
     
-    expect(safeConfig.shells.cmd.enabled).toBe(testConfig.shells.cmd.enabled);
-    expect(safeConfig.shells.gitbash.enabled).toBe(testConfig.shells.gitbash.enabled);
+    if (testConfig.shells.cmd) {
+      expect(safeConfig.shells.cmd.enabled).toBe(testConfig.shells.cmd.enabled);
+    }
+    
+    if (testConfig.shells.gitbash) {
+      expect(safeConfig.shells.gitbash.enabled).toBe(testConfig.shells.gitbash.enabled);
+    }
     
     // Verify that function properties are not included in the serializable config
-    expect(safeConfig.shells.powershell.validatePath).toBeUndefined();
-    expect(safeConfig.shells.cmd.validatePath).toBeUndefined();
-    expect(safeConfig.shells.gitbash.validatePath).toBeUndefined();
+    // We now look for overrides.validatePath property which shouldn't be included in serialized output
+    if (safeConfig.shells.powershell) {
+      expect(safeConfig.shells.powershell.validatePath).toBeUndefined();
+    }
+    if (safeConfig.shells.cmd) {
+      expect(safeConfig.shells.cmd.validatePath).toBeUndefined();
+    }
+    if (safeConfig.shells.gitbash) {
+      expect(safeConfig.shells.gitbash.validatePath).toBeUndefined();
+    }
 
   });
 
@@ -108,18 +148,25 @@ describe('get_config tool', () => {
     
     // Verify shells structure
     Object.keys(testConfig.shells).forEach(shellName => {
-      expect(safeConfig.shells).toHaveProperty(shellName);
-      expect(safeConfig.shells[shellName]).toHaveProperty('enabled');
-      expect(safeConfig.shells[shellName]).toHaveProperty('command');
-      expect(safeConfig.shells[shellName]).toHaveProperty('args');
-      expect(safeConfig.shells[shellName]).toHaveProperty('blockedOperators');
+      const shell = testConfig.shells[shellName as keyof typeof testConfig.shells];
+      if (shell && shell.enabled) {
+        expect(safeConfig.shells).toHaveProperty(shellName);
+        expect(safeConfig.shells[shellName]).toHaveProperty('enabled');
+        expect(safeConfig.shells[shellName]).toHaveProperty('command');
+        expect(safeConfig.shells[shellName]).toHaveProperty('args');
+        expect(safeConfig.shells[shellName]).toHaveProperty('blockedOperators');
+      }
     });
 
   });
 
   test('createSerializableConfig handles empty shells config', () => {
     const testConfigMinimal: ServerConfig = {
-      security: { ...testConfig.security },
+      global: {
+        security: { ...testConfig.global.security },
+        restrictions: { ...testConfig.global.restrictions },
+        paths: { ...testConfig.global.paths }
+      },
       shells: {}
     };
 

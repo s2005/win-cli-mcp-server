@@ -7,20 +7,26 @@ import { getResolvedShellConfig } from './config.js';
  * @returns A serializable version of the configuration
  */
 export function createSerializableConfig(config: ServerConfig): any {
+  // Handle potentially malformed or old format configs
+  const global = config.global || {};
+  const security = global.security || {};
+  const restrictions = global.restrictions || {};
+  const paths = global.paths || {};
+  
   return {
     security: {
       // Security config is now under global.security
-      maxCommandLength: config.global.security.maxCommandLength,
-      commandTimeout: config.global.security.commandTimeout,
-      enableInjectionProtection: config.global.security.enableInjectionProtection,
-      restrictWorkingDirectory: config.global.security.restrictWorkingDirectory,
+      maxCommandLength: security.maxCommandLength,
+      commandTimeout: security.commandTimeout,
+      enableInjectionProtection: security.enableInjectionProtection,
+      restrictWorkingDirectory: security.restrictWorkingDirectory,
       
       // Restrictions config is now under global.restrictions
-      blockedCommands: [...config.global.restrictions.blockedCommands],
-      blockedArguments: [...config.global.restrictions.blockedArguments],
+      blockedCommands: [...(restrictions.blockedCommands || [])],
+      blockedArguments: [...(restrictions.blockedArguments || [])],
       
       // Paths config is now under global.paths
-      allowedPaths: [...config.global.paths.allowedPaths],
+      allowedPaths: [...(paths.allowedPaths || [])],
     },
     shells: Object.entries(config.shells).reduce((acc, [key, shell]) => {
       if (shell) {

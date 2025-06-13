@@ -1,6 +1,6 @@
 import path from 'path';
 import { CLIServer } from '../../src/index.js';
-import { DEFAULT_CONFIG, DEFAULT_WSL_CONFIG } from '../../src/utils/config.js';
+import { DEFAULT_CONFIG } from '../../src/utils/config.js';
 import type { ServerConfig } from '../../src/types/config.js';
 
 export class TestCLIServer {
@@ -12,26 +12,62 @@ export class TestCLIServer {
     // Configure wsl shell to use the local emulator script
     const wslEmulatorPath = path.resolve(process.cwd(), 'scripts/wsl-emulator.js');
     const wslShell = {
-      ...DEFAULT_WSL_CONFIG,
-      command: 'node',
-      args: [wslEmulatorPath, '-e'],
-      validatePath: (dir: string) => /^(\/mnt\/[a-zA-Z]\/|\/)/.test(dir),
-      blockedOperators: ['&', '|', ';', '`']
+      enabled: true,
+      executable: {
+        command: 'node',
+        args: [wslEmulatorPath, '-e']
+      },
+      overrides: {
+        restrictions: {
+          blockedOperators: ['&', '|', ';', '`']
+        }
+      },
+      wslConfig: {
+        mountPoint: '/mnt/',
+        inheritGlobalPaths: true,
+        pathMapping: {
+          enabled: true,
+          windowsToWsl: true
+        }
+      }
     };
-    baseConfig.shells = { ...baseConfig.shells, wsl: wslShell };
-
-    // Disable other shells by default for cross platform reliability
-    if (baseConfig.shells.powershell) baseConfig.shells.powershell.enabled = false;
-    if (baseConfig.shells.cmd) baseConfig.shells.cmd.enabled = false;
-    if (baseConfig.shells.gitbash) baseConfig.shells.gitbash.enabled = false;
+    
+    // Set up shells configuration
+    if (baseConfig.shells) {
+      // Disable other shells by default for cross platform reliability
+      if (baseConfig.shells.powershell) baseConfig.shells.powershell.enabled = false;
+      if (baseConfig.shells.cmd) baseConfig.shells.cmd.enabled = false;
+      if (baseConfig.shells.gitbash) baseConfig.shells.gitbash.enabled = false;
+      
+      // Add WSL shell
+      baseConfig.shells.wsl = wslShell;
+    }
 
     // Allow -e argument for the emulator
-    baseConfig.security.blockedArguments = baseConfig.security.blockedArguments.filter(a => a !== '-e');
+    if (baseConfig.global && baseConfig.global.restrictions) {
+      baseConfig.global.restrictions.blockedArguments = 
+        (baseConfig.global.restrictions.blockedArguments || []).filter(a => a !== '-e');
+    }
 
     // Merge overrides deeply
     const config: ServerConfig = {
       ...baseConfig,
-      security: { ...baseConfig.security, ...(overrides.security || {}) },
+      global: {
+        ...baseConfig.global,
+        ...(overrides.global || {}),
+        security: {
+          ...(baseConfig.global?.security || {}),
+          ...(overrides.global?.security || {})
+        },
+        paths: {
+          ...(baseConfig.global?.paths || {}),
+          ...(overrides.global?.paths || {})
+        },
+        restrictions: {
+          ...(baseConfig.global?.restrictions || {}),
+          ...(overrides.global?.restrictions || {})
+        }
+      },
       shells: {
         ...baseConfig.shells,
         ...(overrides.shells || {}),
