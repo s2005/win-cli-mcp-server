@@ -1,6 +1,6 @@
 import path from 'path';
 import type { ValidationContext } from './validationContext.js';
-import { normalizeWindowsPath, isPathAllowed } from './validation.js';
+import { normalizeWindowsPath, isPathAllowed, convertWindowsToWslPath } from './validation.js';
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 import { getExpectedPathFormat } from './validationContext.js';
 
@@ -16,6 +16,10 @@ export function normalizePathForShell(inputPath: string, context: ValidationCont
       
     case 'unix':
       // For pure Unix shells, ensure forward slashes
+      if (context.isWslShell && /^[A-Z]:\\/.test(inputPath)) {
+        const mount = context.shellConfig.wslConfig?.mountPoint ?? '/mnt/';
+        return convertWindowsToWslPath(inputPath, mount);
+      }
       return inputPath.replace(/\\/g, '/');
       
     case 'mixed':
@@ -72,7 +76,14 @@ function validateWslPath(
   allowedPaths: string[],
   context: ValidationContext
 ): void {
-  // WSL paths must be absolute
+  if (!dir.startsWith('/')) {
+    dir = convertWindowsToWslPath(
+      dir,
+      context.shellConfig.wslConfig?.mountPoint ?? '/mnt/'
+    );
+  }
+
+  // After conversion, ensure still absolute
   if (!dir.startsWith('/')) {
     throw new McpError(
       ErrorCode.InvalidRequest,
