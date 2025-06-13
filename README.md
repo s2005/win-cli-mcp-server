@@ -428,6 +428,7 @@ Example of inheritance in action:
 ```
 
 Results in PowerShell having:
+
 - `commandTimeout`: 45 (overridden)
 - `blockedCommands`: ["rm", "format", "Remove-Item"] (merged)
 
@@ -557,7 +558,7 @@ This project includes a [Dev Container](https://code.visualstudio.com/docs/remot
 4. VS Code will build the dev container image (as defined in `.devcontainer/devcontainer.json` and `Dockerfile`) and start the container. This might take a few minutes the first time.
 5. Once the container is built and started, your VS Code will be connected to this environment. The `postCreateCommand` (`npm install`) will ensure all dependencies are installed.
 
-### Running Tests
+### Running Tests in the Dev Container
 
 After opening the project in the dev container:
 
