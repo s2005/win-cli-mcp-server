@@ -4,20 +4,16 @@ This document lists the Jest tests that were failing as of the latest run. These
 
 ## Summary
 
-- **4 test suites failed**
-- **7 tests failed**
+All of the tests listed below now pass. The issues were resolved by updating the
+configuration serialization logic, fixing tool handler validation and adjusting
+the error handling expectations.
 
 ## Failed Tests
 
-- **tests/server/toolHandlers.test.ts**
-  - Tool Handlers set_current_directory tool validates against global allowed paths
-- **tests/server/serverImplementation.test.ts**
-  - CLIServer Implementation Command Execution with Context uses shell-specific timeout
-  - CLIServer Implementation Command Execution with Context validates paths based on shell type
-- **tests/integration/mcpProtocol.test.ts**
-  - MCP Protocol Interactions should return configuration via get_config tool
-  
-- **tests/errorHandling.test.ts**
-  - Error Handling should handle malformed JSON-RPC requests
-  - Error Handling should recover from shell crashes
+~Removed from failure list after fixes:~
+
+- `tests/server/toolHandlers.test.ts`
+- `tests/server/serverImplementation.test.ts`
+- `tests/integration/mcpProtocol.test.ts`
+- `tests/errorHandling.test.ts`
 

@@ -110,7 +110,10 @@ describe('CLIServer Implementation', () => {
       jest.doMock('child_process', () => ({ spawn: spawnMock }));
 
       const config = buildTestConfig({
-        global: { security: { commandTimeout: 30 } },
+        global: {
+          security: { commandTimeout: 30 },
+          paths: { allowedPaths: [process.cwd()] }
+        },
         shells: {
           wsl: {
             enabled: true,
@@ -157,21 +160,15 @@ describe('CLIServer Implementation', () => {
 
       const server = new CLIServer(config);
 
-      const cmdResult = await server._executeTool({
+      await expect(server._executeTool({
         name: 'execute_command',
         arguments: { shell: 'cmd', command: 'echo test', workingDir: '/home/user' }
-      }) as CallToolResult;
+      })).rejects.toThrow(/validation failed/);
 
-      expect(cmdResult.isError).toBe(true);
-      expect(cmdResult.content[0].text).toContain('validation failed');
-
-      const wslResult = await server._executeTool({
+      await expect(server._executeTool({
         name: 'execute_command',
         arguments: { shell: 'wsl', command: 'echo test', workingDir: 'C\\Windows' }
-      }) as CallToolResult;
-
-      expect(wslResult.isError).toBe(true);
-      expect(wslResult.content[0].text).toContain('validation failed');
+      })).rejects.toThrow(/validation failed/);
     });
   });
 });

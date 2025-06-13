@@ -553,14 +553,12 @@ class CLIServer {
           // Validate the path
           try {
             if (this.config.global.security.restrictWorkingDirectory) {
-              // Create a generic Windows validation context for directory validation
-              const shellKey = 'cmd';
-              const resolvedConfig = getResolvedShellConfig(this.config, shellKey);
-              if (!resolvedConfig) {
-                throw new McpError(ErrorCode.InvalidRequest, 'Failed to resolve shell configuration');
+              const normalized = normalizeWindowsPath(newDir);
+              if (!isPathAllowed(normalized, this.config.global.paths.allowedPaths)) {
+                throw new Error(
+                  `Directory must be within allowed paths: ${this.config.global.paths.allowedPaths.join(', ')}`
+                );
               }
-              const validationContext = createValidationContext(shellKey, resolvedConfig);
-              validateWorkingDirectoryWithContext(newDir, validationContext);
             }
 
             // Change directory and update server state

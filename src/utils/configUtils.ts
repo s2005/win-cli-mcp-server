@@ -5,15 +5,22 @@ import type { ServerConfig, ResolvedShellConfig } from '../types/config.js';
  */
 export function createSerializableConfig(config: ServerConfig): any {
   const serializable: any = {
-    security: {
-      maxCommandLength: config.global.security.maxCommandLength,
-      commandTimeout: config.global.security.commandTimeout,
-      enableInjectionProtection: config.global.security.enableInjectionProtection,
-      restrictWorkingDirectory: config.global.security.restrictWorkingDirectory,
-      blockedCommands: [...config.global.restrictions.blockedCommands],
-      blockedArguments: [...config.global.restrictions.blockedArguments],
-      blockedOperators: [...config.global.restrictions.blockedOperators],
-      allowedPaths: [...config.global.paths.allowedPaths]
+    global: {
+      security: {
+        maxCommandLength: config.global.security.maxCommandLength,
+        commandTimeout: config.global.security.commandTimeout,
+        enableInjectionProtection: config.global.security.enableInjectionProtection,
+        restrictWorkingDirectory: config.global.security.restrictWorkingDirectory
+      },
+      restrictions: {
+        blockedCommands: [...config.global.restrictions.blockedCommands],
+        blockedArguments: [...config.global.restrictions.blockedArguments],
+        blockedOperators: [...config.global.restrictions.blockedOperators]
+      },
+      paths: {
+        allowedPaths: [...config.global.paths.allowedPaths],
+        initialDir: config.global.paths.initialDir
+      }
     },
     shells: {}
   };
@@ -24,12 +31,47 @@ export function createSerializableConfig(config: ServerConfig): any {
 
     const shellInfo: any = {
       enabled: shellConfig.enabled,
-      command: shellConfig.executable.command,
-      args: [...shellConfig.executable.args],
-      blockedOperators: [
-        ...(shellConfig.overrides?.restrictions?.blockedOperators || [])
-      ]
+      executable: {
+        command: shellConfig.executable.command,
+        args: [...shellConfig.executable.args]
+      }
     };
+
+    if (shellConfig.overrides) {
+      shellInfo.overrides = {};
+      if (shellConfig.overrides.security) {
+        shellInfo.overrides.security = { ...shellConfig.overrides.security };
+      }
+      if (shellConfig.overrides.restrictions) {
+        shellInfo.overrides.restrictions = {
+          blockedCommands: shellConfig.overrides.restrictions.blockedCommands ?
+            [...shellConfig.overrides.restrictions.blockedCommands] : undefined,
+          blockedArguments: shellConfig.overrides.restrictions.blockedArguments ?
+            [...shellConfig.overrides.restrictions.blockedArguments] : undefined,
+          blockedOperators: shellConfig.overrides.restrictions.blockedOperators ?
+            [...shellConfig.overrides.restrictions.blockedOperators] : undefined
+        };
+      }
+      if (shellConfig.overrides.paths) {
+        shellInfo.overrides.paths = {
+          allowedPaths: shellConfig.overrides.paths.allowedPaths ?
+            [...shellConfig.overrides.paths.allowedPaths] : undefined,
+          initialDir: shellConfig.overrides.paths.initialDir
+        };
+      }
+    }
+
+    if ('wslConfig' in shellConfig && (shellConfig as any).wslConfig) {
+      const wc = (shellConfig as any).wslConfig;
+      shellInfo.wslConfig = {
+        mountPoint: wc.mountPoint,
+        inheritGlobalPaths: wc.inheritGlobalPaths,
+        pathMapping: wc.pathMapping ? {
+          enabled: wc.pathMapping.enabled,
+          windowsToWsl: wc.pathMapping.windowsToWsl
+        } : undefined
+      };
+    }
 
     serializable.shells[shellName] = shellInfo;
   }

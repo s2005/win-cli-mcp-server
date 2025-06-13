@@ -86,24 +86,25 @@ describe('get_config tool', () => {
     
     // Verify the structure and content of the safe config
     expect(safeConfig).toBeDefined();
-    expect(safeConfig.security).toBeDefined();
+    expect(safeConfig.global).toBeDefined();
+    expect(safeConfig.global.security).toBeDefined();
     expect(safeConfig.shells).toBeDefined();
     
     // Check security settings
-    expect(safeConfig.security.maxCommandLength).toBe(testConfig.global.security.maxCommandLength);
-    expect(safeConfig.security.blockedCommands).toEqual(testConfig.global.restrictions.blockedCommands);
-    expect(safeConfig.security.blockedArguments).toEqual(testConfig.global.restrictions.blockedArguments);
-    expect(safeConfig.security.allowedPaths).toEqual(testConfig.global.paths.allowedPaths);
-    expect(safeConfig.security.restrictWorkingDirectory).toBe(testConfig.global.security.restrictWorkingDirectory);
-    expect(safeConfig.security.commandTimeout).toBe(testConfig.global.security.commandTimeout);
-    expect(safeConfig.security.enableInjectionProtection).toBe(testConfig.global.security.enableInjectionProtection);
+    expect(safeConfig.global.security.maxCommandLength).toBe(testConfig.global.security.maxCommandLength);
+    expect(safeConfig.global.restrictions.blockedCommands).toEqual(testConfig.global.restrictions.blockedCommands);
+    expect(safeConfig.global.restrictions.blockedArguments).toEqual(testConfig.global.restrictions.blockedArguments);
+    expect(safeConfig.global.paths.allowedPaths).toEqual(testConfig.global.paths.allowedPaths);
+    expect(safeConfig.global.security.restrictWorkingDirectory).toBe(testConfig.global.security.restrictWorkingDirectory);
+    expect(safeConfig.global.security.commandTimeout).toBe(testConfig.global.security.commandTimeout);
+    expect(safeConfig.global.security.enableInjectionProtection).toBe(testConfig.global.security.enableInjectionProtection);
     
     // Check shells configuration
     if (testConfig.shells.powershell) {
       expect(safeConfig.shells.powershell.enabled).toBe(testConfig.shells.powershell.enabled);
-      expect(safeConfig.shells.powershell.command).toBe(testConfig.shells.powershell.executable?.command);
-      expect(safeConfig.shells.powershell.args).toEqual(testConfig.shells.powershell.executable?.args || []);
-      expect(safeConfig.shells.powershell.blockedOperators)
+      expect(safeConfig.shells.powershell.executable.command).toBe(testConfig.shells.powershell.executable?.command);
+      expect(safeConfig.shells.powershell.executable.args).toEqual(testConfig.shells.powershell.executable?.args || []);
+      expect(safeConfig.shells.powershell.overrides?.restrictions?.blockedOperators)
         .toEqual(testConfig.shells.powershell.overrides?.restrictions?.blockedOperators || []);
     }
     
@@ -134,17 +135,20 @@ describe('get_config tool', () => {
     const safeConfig = createSerializableConfig(testConfig);
     
     // Verify the structure matches what we expect both tools to return
-    expect(safeConfig).toHaveProperty('security');
+    expect(safeConfig).toHaveProperty('global');
+    expect(safeConfig.global).toHaveProperty('security');
     expect(safeConfig).toHaveProperty('shells');
     
     // Verify security properties
-    expect(safeConfig.security).toHaveProperty('maxCommandLength');
-    expect(safeConfig.security).toHaveProperty('blockedCommands');
-    expect(safeConfig.security).toHaveProperty('blockedArguments');
-    expect(safeConfig.security).toHaveProperty('allowedPaths');
-    expect(safeConfig.security).toHaveProperty('restrictWorkingDirectory');
-    expect(safeConfig.security).toHaveProperty('commandTimeout');
-    expect(safeConfig.security).toHaveProperty('enableInjectionProtection');
+    expect(safeConfig.global.security).toHaveProperty('maxCommandLength');
+    expect(safeConfig.global.restrictions).toHaveProperty('blockedCommands');
+    expect(safeConfig.global.restrictions).toHaveProperty('blockedArguments');
+    expect(safeConfig.global.restrictions).toHaveProperty('blockedOperators');
+    expect(safeConfig.global.paths).toHaveProperty('allowedPaths');
+    expect(safeConfig.global.paths).toHaveProperty('initialDir');
+    expect(safeConfig.global.security).toHaveProperty('restrictWorkingDirectory');
+    expect(safeConfig.global.security).toHaveProperty('commandTimeout');
+    expect(safeConfig.global.security).toHaveProperty('enableInjectionProtection');
     
     // Verify shells structure
     Object.keys(testConfig.shells).forEach(shellName => {
@@ -152,9 +156,12 @@ describe('get_config tool', () => {
       if (shell && shell.enabled) {
         expect(safeConfig.shells).toHaveProperty(shellName);
         expect(safeConfig.shells[shellName]).toHaveProperty('enabled');
-        expect(safeConfig.shells[shellName]).toHaveProperty('command');
-        expect(safeConfig.shells[shellName]).toHaveProperty('args');
-        expect(safeConfig.shells[shellName]).toHaveProperty('blockedOperators');
+        expect(safeConfig.shells[shellName]).toHaveProperty('executable');
+        expect(safeConfig.shells[shellName].executable).toHaveProperty('command');
+        expect(safeConfig.shells[shellName].executable).toHaveProperty('args');
+        if (safeConfig.shells[shellName].overrides && safeConfig.shells[shellName].overrides.restrictions) {
+          expect(safeConfig.shells[shellName].overrides.restrictions).toHaveProperty('blockedOperators');
+        }
       }
     });
 
@@ -173,7 +180,7 @@ describe('get_config tool', () => {
     const safeConfig = createSerializableConfig(testConfigMinimal);
 
     expect(safeConfig).toBeDefined();
-    expect(safeConfig.security).toBeDefined();
+    expect(safeConfig.global).toBeDefined();
     expect(safeConfig.shells).toBeDefined();
     expect(Object.keys(safeConfig.shells)).toHaveLength(0);
   });
@@ -205,7 +212,8 @@ describe('get_config tool', () => {
     const parsedConfig = JSON.parse(formattedResponse.content[0].text);
     
     // Verify it contains the expected structure
-    expect(parsedConfig).toHaveProperty('security');
+    expect(parsedConfig).toHaveProperty('global');
+    expect(parsedConfig.global).toHaveProperty('security');
     expect(parsedConfig).toHaveProperty('shells');
     
     // Verify the content matches what we expect
