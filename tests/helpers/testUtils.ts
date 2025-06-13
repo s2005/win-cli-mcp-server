@@ -22,15 +22,13 @@ export function buildTestConfig(overrides: DeepPartial<ServerConfig> = {}): Serv
         ...overrides.global?.security
       },
       restrictions: {
-        blockedCommands: ['format', 'shutdown'] as string[],
-        blockedArguments: ['--system'] as string[],
-        blockedOperators: ['&', '|', ';', '`'] as string[],
-        ...overrides.global?.restrictions
+        blockedCommands: overrides.global?.restrictions?.blockedCommands?.filter((cmd): cmd is string => cmd !== undefined) ?? ['format', 'shutdown'],
+        blockedArguments: overrides.global?.restrictions?.blockedArguments?.filter((arg): arg is string => arg !== undefined) ?? ['--system'],
+        blockedOperators: overrides.global?.restrictions?.blockedOperators?.filter((op): op is string => op !== undefined) ?? ['&', '|', ';', '`'],
       },
       paths: {
-        allowedPaths: ['/test/default'] as string[],
+        allowedPaths: overrides.global?.paths?.allowedPaths?.filter((path): path is string => path !== undefined) ?? ['/test/default'],
         initialDir: overrides.global?.paths?.initialDir,
-        ...overrides.global?.paths
       }
     },
     shells: {}

@@ -127,7 +127,7 @@ describe('Config Normalization', () => {
     const cfg = loadConfig(configPath);
 
     expect(cfg.shells).toHaveProperty('gitbash');
-    expect(cfg.shells.gitbash.enabled).toBe(true);
+    expect(cfg.shells.gitbash!.enabled).toBe(true);
     
     // Other shells might be present but should be disabled
     if (cfg.shells.powershell) expect(cfg.shells.powershell.enabled).toBe(false);
@@ -214,8 +214,8 @@ describe('Config Normalization', () => {
 
     expect(cfg.shells).toHaveProperty('powershell');
     expect(cfg.shells).toHaveProperty('cmd');
-    expect(cfg.shells.powershell.enabled).toBe(true);
-    expect(cfg.shells.cmd.enabled).toBe(true);
+    expect(cfg.shells.powershell!.enabled).toBe(true);
+    expect(cfg.shells.cmd!.enabled).toBe(true);
     
     // These shells might be present but should be disabled
     if (cfg.shells.gitbash) expect(cfg.shells.gitbash.enabled).toBe(false);
