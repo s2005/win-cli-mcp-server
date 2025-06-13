@@ -44,10 +44,8 @@ export function validateWorkingDirectory(
   
   const allowedPaths = context.shellConfig.paths.allowedPaths;
   if (allowedPaths.length === 0) {
-    throw new McpError(
-      ErrorCode.InvalidRequest,
-      `No allowed paths configured for ${context.shellName}`
-    );
+    // When no paths are configured, treat as unrestricted
+    return;
   }
   
   // Normalize the directory path for validation
