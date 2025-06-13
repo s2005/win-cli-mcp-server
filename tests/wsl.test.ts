@@ -157,6 +157,7 @@ describe('WSL Shell Execution via Emulator (Tests 1-4)', () => {
 describe('WSL Working Directory Validation (Test 5)', () => { // Removed .only
   let serverInstanceForCwdTest: CLIServer;
   let cwdTestConfig: ServerConfig;
+  let wslAllowedBase: string;
 
   beforeEach(() => {
     cwdTestConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
@@ -201,9 +202,9 @@ describe('WSL Working Directory Validation (Test 5)', () => { // Removed .only
       
       // Path settings
       if (cwdTestConfig.global.paths) {
-        // Using simplified "tad" for "test_allowed_dir"
-        // For WSL CWD tests, allowedPaths should also be in WSL format for consistent comparison
-        cwdTestConfig.global.paths.allowedPaths = ['/mnt/c/tad'];
+        // Use a temp directory so creation does not require special permissions
+        wslAllowedBase = path.posix.join(os.tmpdir(), 'tad');
+        cwdTestConfig.global.paths.allowedPaths = [wslAllowedBase];
       }
       
       // Remove -e from blocked args
@@ -216,9 +217,9 @@ describe('WSL Working Directory Validation (Test 5)', () => { // Removed .only
     serverInstanceForCwdTest = new CLIServer(cwdTestConfig);
   });
 
-  test('Test 5.1: Valid WSL working directory (/mnt/c/tad/sub)', async () => {
-    const wslOriginalPath = '/mnt/c/tad/sub';
-    // This path should be allowed by the config ['/mnt/c/tad']
+  test('Test 5.1: Valid WSL working directory (temp tad/sub)', async () => {
+    const wslOriginalPath = path.posix.join(wslAllowedBase, 'sub');
+    // This path should be allowed by the config using the temp base
     // Ensure the directory exists for the emulator to chdir successfully
     fs.mkdirSync(wslOriginalPath, { recursive: true });
 
