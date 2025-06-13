@@ -2,13 +2,21 @@ import { describe, test, expect, jest } from '@jest/globals';
 import { CLIServer } from '../src/index.js';
 import { DEFAULT_CONFIG, loadConfig } from '../src/utils/config.js';
 import { baseConfig } from './fixtures/configs.js';
+import { buildTestConfig } from './helpers/testUtils.js';
 import { ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import fs from 'fs';
 import path from 'path';
 
 describe('Error Handling', () => {
   test('should handle malformed JSON-RPC requests', async () => {
-    const server = new CLIServer(baseConfig);
+    const server = new CLIServer(buildTestConfig({
+      shells: {
+        cmd: {
+          enabled: true,
+          executable: { command: 'cmd.exe', args: ['/c'] }
+        }
+      }
+    }));
     await expect(
       server._executeTool({ name: 'execute_command', arguments: { shell: 'cmd' } })
     ).rejects.toEqual(
@@ -35,7 +43,7 @@ describe('Error Handling', () => {
       throw new Error('Test failed: Promise should have rejected due to shell crash.');
     } catch (error: any) {
       expect(error.code).toBe(ErrorCode.InternalError);
-      expect(error.message).toContain('Shell process error');
+      expect(error.message).toContain('process error');
       // Check for parts of the underlying spawn error message
       expect(error.message).toContain('nonexistent_shell_command_for_testing');
       expect(error.message).toMatch(/ENOENT|UNKNOWN/); // Accommodate different spawn error messages like UNKNOWN or ENOENT

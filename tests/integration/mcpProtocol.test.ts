@@ -10,8 +10,10 @@ describe('MCP Protocol Interactions', () => {
     const result = await server.callTool('get_config', {});
     const text = result.content[0]?.text ?? '';
     const cfg = JSON.parse(text);
-    expect(cfg).toHaveProperty('security');
-    expect(cfg).toHaveProperty('shells');
+    expect(cfg).toHaveProperty('configuration');
+    expect(cfg.configuration).toHaveProperty('global');
+    expect(cfg.configuration.global).toHaveProperty('security');
+    expect(cfg).toHaveProperty('resolvedShells');
   });
 
   test('should validate directories correctly', async () => {
