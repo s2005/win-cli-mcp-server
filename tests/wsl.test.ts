@@ -203,7 +203,7 @@ describe('WSL Working Directory Validation (Test 5)', () => { // Removed .only
       // Path settings
       if (cwdTestConfig.global.paths) {
         // Use a temp directory so creation does not require special permissions
-        wslAllowedBase = path.posix.join(os.tmpdir(), 'tad');
+        wslAllowedBase = path.join(os.tmpdir(), 'tad');
         cwdTestConfig.global.paths.allowedPaths = [wslAllowedBase];
       }
       
@@ -218,17 +218,20 @@ describe('WSL Working Directory Validation (Test 5)', () => { // Removed .only
   });
 
   test('Test 5.1: Valid WSL working directory (temp tad/sub)', async () => {
-    const wslOriginalPath = path.posix.join(wslAllowedBase, 'sub');
+    const windowsSubPath = path.join(wslAllowedBase, 'sub');
     // This path should be allowed by the config using the temp base
     // Ensure the directory exists for the emulator to chdir successfully
-    fs.mkdirSync(wslOriginalPath, { recursive: true });
+    fs.mkdirSync(windowsSubPath, { recursive: true });
+
+    // Convert Windows path to WSL format for the command
+    const wslPath = windowsSubPath.replace(/^([A-Z]):\\/, (match, drive) => `/mnt/${drive.toLowerCase()}/`).replace(/\\/g, '/');
 
     const result = await serverInstanceForCwdTest._executeTool({
       name: 'execute_command',
       arguments: {
         shell: 'wsl',
         command: 'pwd',
-        workingDir: wslOriginalPath
+        workingDir: wslPath
       }
     }) as CallToolResult;
 
@@ -239,12 +242,12 @@ describe('WSL Working Directory Validation (Test 5)', () => { // Removed .only
     // environment, it should match the provided workingDir.
     const firstContent = result.content[0];
     if (firstContent && firstContent.type === 'text') {
-      expect(firstContent.text.trim()).toBe(wslOriginalPath);
+      expect(firstContent.text.trim()).toBe(wslPath);
     } else {
       throw new Error('Expected first content part to be text for pwd test.');
     }
     // Check that the metadata reflects the intended WSL working directory
-    expect((result.metadata as any)?.workingDirectory).toBe(wslOriginalPath);
+    expect((result.metadata as any)?.workingDirectory).toBe(wslPath);
   });
 
   test('Test 5.1.1: Valid WSL working directory (/tmp)', async () => {

@@ -46,7 +46,13 @@ if (args[0] === '-e') {
   // Special handling for common test commands
   switch (command) {
     case 'pwd':
-      console.log(process.cwd());
+      // Use original WSL path if available (when called from server)
+      if (process.env.WSL_ORIGINAL_PATH) {
+        console.log(process.env.WSL_ORIGINAL_PATH);
+      } else {
+        // When called directly (like in standalone tests), return actual directory
+        console.log(process.cwd());
+      }
       process.exit(0);
       break;
     case 'exit':

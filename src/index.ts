@@ -244,13 +244,34 @@ class CLIServer {
       }
 
       try {
+        // For WSL, convert WSL paths back to Windows paths for spawn cwd
+        let spawnCwd = workingDir;
+        let envVars = { ...process.env };
+        if (shellName === 'wsl') {
+          if (workingDir.startsWith('/mnt/')) {
+            // Convert /mnt/c/path to C:\path
+            const match = workingDir.match(/^\/mnt\/([a-z])\/(.*)$/i);
+            if (match) {
+              const drive = match[1].toUpperCase();
+              const pathPart = match[2].replace(/\//g, '\\');
+              spawnCwd = `${drive}:\\${pathPart}`;
+            }
+          } else if (workingDir.startsWith('/')) {
+            // Pure Linux paths like /tmp - use current directory for spawn
+            // and let emulator handle the path emulation
+            spawnCwd = process.cwd();
+          }
+          // Pass original WSL path to emulator via environment variable
+          envVars.WSL_ORIGINAL_PATH = workingDir;
+        }
+        
         shellProcess = spawn(
           shellConfig.executable.command,
           spawnArgs,
           {
-            cwd: workingDir,
+            cwd: spawnCwd,
             stdio: ['pipe', 'pipe', 'pipe'],
-            env: { ...process.env }
+            env: envVars
           }
         );
       } catch (err) {

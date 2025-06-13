@@ -170,8 +170,17 @@ function mergeConfigs(defaultConfig: ServerConfig, userConfig: Partial<ServerCon
         ...(userConfig.global?.security || {})
       },
       restrictions: {
-        ...defaultConfig.global.restrictions,
-        ...(userConfig.global?.restrictions || {})
+        // Merge arrays properly - only use user config arrays if they have content,
+        // otherwise keep defaults
+        blockedCommands: (userConfig.global?.restrictions?.blockedCommands && userConfig.global.restrictions.blockedCommands.length > 0) 
+          ? userConfig.global.restrictions.blockedCommands 
+          : defaultConfig.global.restrictions.blockedCommands,
+        blockedArguments: (userConfig.global?.restrictions?.blockedArguments && userConfig.global.restrictions.blockedArguments.length > 0)
+          ? userConfig.global.restrictions.blockedArguments
+          : defaultConfig.global.restrictions.blockedArguments,
+        blockedOperators: (userConfig.global?.restrictions?.blockedOperators && userConfig.global.restrictions.blockedOperators.length > 0)
+          ? userConfig.global.restrictions.blockedOperators
+          : defaultConfig.global.restrictions.blockedOperators
       },
       paths: {
         ...defaultConfig.global.paths,
