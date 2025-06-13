@@ -19,6 +19,12 @@ jobs:
         run: npm install
       - name: Build
         run: npm run build
+      - name: Validate Server Configuration
+        run: |
+          if [[ ! -d "C\\allowed" ]]; then
+            echo "Configured path 'C\\allowed' does not exist."
+            exit 1
+          fi
       - name: Test
         run: npm test
       - name: Test with open handles detection
@@ -37,6 +43,12 @@ jobs:
         run: npm install
       - name: Build
         run: npm run build
+      - name: Validate Server Configuration
+        run: |
+          if [[ ! -d "C\\allowed" ]]; then
+            echo "Configured path 'C\\allowed' does not exist."
+            exit 1
+          fi
       - name: Test
         run: npm test
 
@@ -52,6 +64,12 @@ jobs:
         run: npm install
       - name: Build
         run: npm run build
+      - name: Validate Server Configuration
+        run: |
+          if [[ ! -d "C\\allowed" ]]; then
+            echo "Configured path 'C\\allowed' does not exist."
+            exit 1
+          fi
       - name: Remove Git Bash from PATH
         shell: pwsh # Ensure this script runs with PowerShell
         run: |

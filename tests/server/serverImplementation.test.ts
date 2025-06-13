@@ -91,6 +91,27 @@ describe('CLIServer Implementation', () => {
 
       cwdSpy.mockRestore();
     });
+
+    test('fallbacks to first allowed path when initialDir is disallowed', () => {
+      const chdirSpy = jest.spyOn(process, 'chdir').mockImplementation(() => {});
+      const cwdSpy = jest.spyOn(process, 'cwd').mockReturnValue('C\\not-allowed');
+
+      const config = buildTestConfig({
+        global: {
+          security: { restrictWorkingDirectory: true },
+          paths: {
+            initialDir: 'C\\not-allowed',
+            allowedPaths: ['C\\allowed', 'D\\fallback']
+          }
+        }
+      });
+
+      const server = new CLIServer(config);
+      expect((server as any).serverActiveCwd).toBe('C\\allowed');
+
+      chdirSpy.mockRestore();
+      cwdSpy.mockRestore();
+    });
   });
 
   describe('Command Execution with Context', () => {

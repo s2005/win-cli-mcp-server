@@ -107,49 +107,34 @@ class CLIServer {
   }
 
   private initializeWorkingDirectory(): void {
-    let candidateCwd: string | undefined = undefined;
-    let chdirFailed = false;
     const startupMessages: string[] = [];
-
-    if (this.config.global.paths.initialDir && typeof this.config.global.paths.initialDir === 'string') {
-      try {
-        process.chdir(this.config.global.paths.initialDir);
-        candidateCwd = this.config.global.paths.initialDir;
-        startupMessages.push(`INFO: Successfully changed current working directory to configured initialDir: ${candidateCwd}`);
-      } catch (err: any) {
-        startupMessages.push(`ERROR: Failed to change directory to configured initialDir '${this.config.global.paths.initialDir}': ${err?.message}. Falling back to process CWD.`);
-        chdirFailed = true;
-      }
-    }
-
-    // Fallback to process.cwd()
-    if (!candidateCwd || chdirFailed) {
-      candidateCwd = normalizeWindowsPath(process.cwd());
-      if (chdirFailed) {
-        startupMessages.push(`INFO: Current working directory remains: ${candidateCwd}`);
-      }
-    }
-
-    // Check if CWD is allowed based on global config
     const restrictCwd = this.config.global.security.restrictWorkingDirectory;
-    const globalAllowedPaths = this.config.global.paths.allowedPaths;
+    const allowedPaths = this.config.global.paths.allowedPaths;
 
-    if (restrictCwd && globalAllowedPaths.length > 0) {
-      const isCandidateCwdAllowed = isPathAllowed(candidateCwd!, globalAllowedPaths);
-      if (!isCandidateCwdAllowed) {
-        this.serverActiveCwd = undefined;
-        startupMessages.push(`INFO: Server's effective starting directory: ${candidateCwd}`);
-        startupMessages.push("INFO: 'restrictWorkingDirectory' is enabled, and this directory is not in the configured 'allowedPaths'.");
-        startupMessages.push("INFO: The server's active working directory is currently NOT SET.");
-        startupMessages.push("INFO: To run commands that don't specify a 'workingDir', you must first set a valid working directory using the 'set_current_directory' tool.");
-        startupMessages.push(`INFO: Configured allowed paths are: ${globalAllowedPaths.join(', ')}`);
-      } else {
-        this.serverActiveCwd = candidateCwd;
-        startupMessages.push(`INFO: Server's active working directory initialized to: ${this.serverActiveCwd}.`);
+    let candidateCwd = this.config.global.paths.initialDir;
+
+    // Validate candidate against allowed paths before attempting to chdir
+    if (restrictCwd && candidateCwd) {
+      if (!isPathAllowed(candidateCwd, allowedPaths)) {
+        startupMessages.push(`ERROR: Initial directory '${candidateCwd}' is not in allowed paths.`);
+        candidateCwd = allowedPaths[0];
+        if (candidateCwd) {
+          startupMessages.push(`INFO: Falling back to default allowed path '${candidateCwd}'.`);
+        }
       }
-    } else {
+    }
+
+    if (!candidateCwd) {
+      candidateCwd = normalizeWindowsPath(process.cwd());
+    }
+
+    try {
+      process.chdir(candidateCwd);
       this.serverActiveCwd = candidateCwd;
-      startupMessages.push(`INFO: Server's active working directory initialized to: ${this.serverActiveCwd}.`);
+      startupMessages.push(`INFO: Server's active working directory set to '${this.serverActiveCwd}'.`);
+    } catch (error: any) {
+      this.serverActiveCwd = undefined;
+      startupMessages.push(`ERROR: Failed to set working directory: ${error.message}`);
     }
 
     startupMessages.forEach(msg => console.error(msg));
