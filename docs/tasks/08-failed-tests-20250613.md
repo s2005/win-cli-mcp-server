@@ -4,8 +4,8 @@ This document lists the Jest tests that were failing as of the latest run. These
 
 ## Summary
 
-- **6 test suites failed**
-- **13 tests failed**
+- **4 test suites failed**
+- **7 tests failed**
 
 ## Failed Tests
 
@@ -16,15 +16,6 @@ This document lists the Jest tests that were failing as of the latest run. These
   - CLIServer Implementation Command Execution with Context validates paths based on shell type
 - **tests/integration/mcpProtocol.test.ts**
   - MCP Protocol Interactions should return configuration via get_config tool
-- **tests/wsl.test.ts**
-  - WSL Working Directory Validation (Test 5) Test 5.1: Valid WSL working directory (/mnt/c/tad/sub)
-  - WSL Working Directory Validation (Test 5) Test 5.1.1: Valid WSL working directory (/tmp)
-  - WSL Working Directory Validation (Test 5) Test 5.2: Invalid WSL working directory (not in allowedPaths - /mnt/d/forbidden)
-  - WSL Working Directory Validation (Test 5) Test 5.3: Invalid WSL working directory (valid prefix, not directory containment - /mnt/c/tad_plus_suffix)
-  - WSL Working Directory Validation (Test 5) Test 5.4: Invalid WSL working directory (pure Linux path not allowed - /usr/local)
-- **tests/processManagement.test.ts**
-  - Process Management should handle process spawn errors gracefully
-  - Process Management should propagate shell process errors
   
 - **tests/errorHandling.test.ts**
   - Error Handling should handle malformed JSON-RPC requests
