@@ -1,14 +1,16 @@
 import path from 'path';
-import { ServerConfig, ShellConfig } from '../../src/types/config.js';
+import { ServerConfig, ResolvedShellConfig } from '../../src/types/config.js';
+import { getResolvedShellConfig } from '../../src/utils/config.js';
+import { createValidationContext } from '../../src/utils/validationContext.js';
 import {
   parseCommand,
   extractCommandName,
   validateShellOperators,
   normalizeWindowsPath,
-  validateWorkingDirectory,
   isCommandBlocked,
   isArgumentBlocked
 } from '../../src/utils/validation.js';
+import { validateWorkingDirectory } from '../../src/utils/pathValidation.js';
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 
 const validateCommandCallHistory: { command: string, workingDir: string }[] = [];
@@ -16,38 +18,56 @@ const MAX_VALIDATE_CMD_HISTORY_SIZE = 5;
 const VALIDATE_CMD_RECURSION_THRESHOLD = 2;
 
 export class MockCLIServer {
-  constructor(public config: ServerConfig) {}
+  private resolvedConfigs: Map<string, ResolvedShellConfig> = new Map();
+  
+  constructor(public config: ServerConfig) {
+    // Pre-resolve all shell configurations
+    for (const [shellName, shellConfig] of Object.entries(config.shells)) {
+      if (shellConfig?.enabled) {
+        const resolved = getResolvedShellConfig(config, shellName as keyof ServerConfig['shells']);
+        if (resolved) {
+          this.resolvedConfigs.set(shellName, resolved);
+        }
+      }
+    }
+  }
 
-  private validateSingleCommand(shellConfig: ShellConfig, command: string): void {
-    if (this.config.security.enableInjectionProtection) {
-      validateShellOperators(command, shellConfig);
+  getResolvedConfig(shellName: string): ResolvedShellConfig | null {
+    return this.resolvedConfigs.get(shellName) || null;
+  }
+
+  private validateSingleCommand(shellName: string, resolved: ResolvedShellConfig, command: string): void {
+    const context = createValidationContext(shellName, resolved);
+    
+    if (resolved.security.enableInjectionProtection) {
+      validateShellOperators(command, context);
     }
 
     const { command: executable, args } = parseCommand(command);
 
-    if (isCommandBlocked(executable, this.config.security.blockedCommands)) {
+    if (isCommandBlocked(executable, context)) {
       throw new McpError(
         ErrorCode.InvalidRequest,
         `Command is blocked: "${extractCommandName(executable)}"`
       );
     }
 
-    if (isArgumentBlocked(args, this.config.security.blockedArguments)) {
+    if (isArgumentBlocked(args, context)) {
       throw new McpError(
         ErrorCode.InvalidRequest,
         'One or more arguments are blocked. Check configuration for blocked patterns.'
       );
     }
 
-    if (command.length > this.config.security.maxCommandLength) {
+    if (command.length > resolved.security.maxCommandLength) {
       throw new McpError(
         ErrorCode.InvalidRequest,
-        `Command exceeds maximum length of ${this.config.security.maxCommandLength}`
+        `Command exceeds maximum length of ${resolved.security.maxCommandLength}`
       );
     }
   }
 
-  validateCommand(shellKey: string | ShellConfig, command: string, workingDir: string): void {
+  validateCommand(shellName: string, command: string, workingDir: string): void {
     const normalizePathCallStack: Set<string> = new Set(); // Call stack for normalizeWindowsPath calls within this validateCommand execution
     // Debugging: Track call history for validateCommand
     const currentCall = { command, workingDir };
@@ -63,11 +83,12 @@ export class MockCLIServer {
         throw new Error(`MockCLIServer.validateCommand: Potential recursion detected. Call with (cmd: '${command}', wd: '${workingDir}') appeared ${occurrences} times in the last ${historyCopy.length} calls. History: [${historyString}]`);
     }
 
-    const shellConfig: ShellConfig | undefined =
-      typeof shellKey === 'string' ? this.config.shells[shellKey as keyof typeof this.config.shells] : shellKey;
-    if (!shellConfig) {
-      throw new Error(`Unknown shell: ${shellKey}`);
+    const resolved = this.getResolvedConfig(shellName);
+    if (!resolved) {
+      throw new Error(`Shell ${shellName} not found or not enabled`);
     }
+    
+    const context = createValidationContext(shellName, resolved);
 
     const steps = command.split(/\s*&&\s*/);
     let currentDir = normalizeWindowsPath(workingDir);
@@ -76,7 +97,7 @@ export class MockCLIServer {
       const trimmed = step.trim();
       if (!trimmed) continue;
 
-      this.validateSingleCommand(shellConfig, trimmed);
+      this.validateSingleCommand(shellName, resolved, trimmed);
 
       const { command: executable, args } = parseCommand(trimmed);
       if ((executable.toLowerCase() === 'cd' || executable.toLowerCase() === 'chdir') && args.length) {
@@ -130,8 +151,8 @@ export class MockCLIServer {
         let target = normalizeWindowsPath(pathForNormalization);
 
 
-        if (this.config.security.restrictWorkingDirectory) {
-          validateWorkingDirectory(target, this.config.security.allowedPaths);
+        if (resolved.security.restrictWorkingDirectory) {
+          validateWorkingDirectory(target, context);
         }
         currentDir = target;
       }

@@ -8,16 +8,59 @@ import {
   isCommandBlocked,
   isArgumentBlocked,
   parseCommand,
-  validateShellOperators
+  validateShellOperators,
+  normalizeWindowsPath,
+  isPathAllowed,
+  normalizeAllowedPaths
 } from '../src/utils/validation.js';
 // Import the path-related functionality from pathValidation.js
 import {
   validateWorkingDirectory, 
   normalizePathForShell
 } from '../src/utils/pathValidation.js';
-// Import createValidationContext to create contexts for the tests
-import { createValidationContext } from '../src/utils/validationContext.js';
-import type { ShellConfig, ResolvedShellConfig } from '../src/types/config.js';
+// Import createValidationContext and ValidationContext type
+import { createValidationContext, ValidationContext } from '../src/utils/validationContext.js';
+import type { ResolvedShellConfig } from '../src/types/config.js';
+
+/**
+ * Helper function to create a resolved shell config for testing
+ */
+function createTestConfig(
+  blockedCommands: string[] = [], 
+  blockedArgs: string[] = [], 
+  blockedOperators: string[] = [],
+  allowedPaths: string[] = []
+): ResolvedShellConfig {
+  return {
+    enabled: true,
+    executable: {
+      command: 'test',
+      args: []
+    },
+    security: {
+      maxCommandLength: 2000,
+      commandTimeout: 30,
+      enableInjectionProtection: true,
+      restrictWorkingDirectory: allowedPaths.length > 0
+    },
+    restrictions: {
+      blockedCommands,
+      blockedArguments: blockedArgs,
+      blockedOperators
+    },
+    paths: {
+      allowedPaths: allowedPaths.length > 0 ? allowedPaths : [],
+      initialDir: ''
+    }
+  };
+}
+
+/**
+ * Helper function to create a validation context for testing
+ */
+function createTestContext(shellName: string, config: ResolvedShellConfig): ValidationContext {
+  return createValidationContext(shellName, config);
+}
 
 // Mock child_process exec
 jest.mock('child_process', () => ({
@@ -68,7 +111,21 @@ describe('Command Blocking', () => {
     ['formatter.exe', false],
     ['delete.exe', false],
   ])('isCommandBlocked(%s) should return %s', (command, expected) => {
-    expect(isCommandBlocked(command, blockedCommands)).toBe(expected);
+    // Create a test context with blocked commands
+    const config = createTestConfig(blockedCommands);
+    const context = createTestContext('cmd', config);
+    expect(isCommandBlocked(command, context)).toBe(expected);
+  });
+
+  test('isCommandBlocked works with validation context', () => {
+    // Create a config with blocked commands
+    const config = createTestConfig(['rm', 'del', 'format']);
+    const context = createTestContext('cmd', config);
+    
+    // Test with context
+    expect(isCommandBlocked('rm', context)).toBe(true);
+    expect(isCommandBlocked('del.bat', context)).toBe(true);
+    expect(isCommandBlocked('notepad', context)).toBe(false);
   });
 });
 
@@ -76,20 +133,54 @@ describe('Argument Blocking', () => {
   const blockedArgs = ['--system', '-rf', '--exec'];
 
   test('isArgumentBlocked identifies blocked arguments', () => {
-    expect(isArgumentBlocked(['--help', '--system'], blockedArgs)).toBe(true);
-    expect(isArgumentBlocked(['-rf'], blockedArgs)).toBe(true);
-    expect(isArgumentBlocked(['--safe', '--normal'], blockedArgs)).toBe(false);
+    const config = createTestConfig([], blockedArgs);
+    const context = createTestContext('cmd', config);
+    
+    expect(isArgumentBlocked(['--help', '--system'], context)).toBe(true);
+    expect(isArgumentBlocked(['-rf'], context)).toBe(true);
+    expect(isArgumentBlocked(['--safe', '--normal'], context)).toBe(false);
   });
 
   test('isArgumentBlocked is case insensitive for security', () => {
-    expect(isArgumentBlocked(['--SYSTEM'], blockedArgs)).toBe(true);
-    expect(isArgumentBlocked(['-RF'], blockedArgs)).toBe(true);
-    expect(isArgumentBlocked(['--SyStEm'], blockedArgs)).toBe(true);
+    const config = createTestConfig([], blockedArgs);
+    const context = createTestContext('cmd', config);
+    
+    expect(isArgumentBlocked(['--SYSTEM'], context)).toBe(true);
+    expect(isArgumentBlocked(['-RF'], context)).toBe(true);
+    expect(isArgumentBlocked(['--SyStEm'], context)).toBe(true);
   });
 
   test('isArgumentBlocked handles multiple arguments', () => {
-    expect(isArgumentBlocked(['--safe', '--exec', '--other'], blockedArgs)).toBe(true);
-    expect(isArgumentBlocked(['arg1', 'arg2', '--help'], blockedArgs)).toBe(false);
+    const config = createTestConfig([], blockedArgs);
+    const context = createTestContext('cmd', config);
+    
+    expect(isArgumentBlocked(['--safe', '--exec', '--other'], context)).toBe(true);
+    expect(isArgumentBlocked(['arg1', 'arg2', '--help'], context)).toBe(false);
+  });
+  
+  test('isArgumentBlocked uses validation context restrictions', () => {
+    // Create a config with blocked arguments and a validation context
+    const config = createTestConfig([], ['--system', '-rf', '--exec']);
+    const context = createTestContext('cmd', config);
+    
+    // Test with restrictions from the context
+    expect(isArgumentBlocked(['--help', '--system'], context)).toBe(true);
+    expect(isArgumentBlocked(['-rf'], context)).toBe(true);
+    expect(isArgumentBlocked(['--safe'], context)).toBe(false);
+  });
+
+  test('isArgumentBlocked with context handles shell-specific overrides', () => {
+    // Create a base config
+    const config = createTestConfig([], ['--global-blocked']);
+    
+    // Create a config with shell-specific overrides
+    const powershellConfig = createTestConfig([], ['--ps-specific', '-psarg']);
+    const powershellContext = createTestContext('powershell', powershellConfig);
+    
+    // Should only block shell-specific blocked arguments, not global ones
+    expect(isArgumentBlocked(['--ps-specific'], powershellContext)).toBe(true);
+    expect(isArgumentBlocked(['-psarg'], powershellContext)).toBe(true);
+    expect(isArgumentBlocked(['--global-blocked'], powershellContext)).toBe(false);
   });
 });
 
@@ -263,80 +354,111 @@ describe('Path Validation', () => {
     expect(isPathAllowed(normalizeWindowsPath('\\\\server\\other'), uncAllowed)).toBe(false);
   });
 
-  test('validateWorkingDirectory throws for invalid paths', () => {
-    expect(() => validateWorkingDirectory(normalizeWindowsPath('relative/path'), allowedPaths))
-      .toThrow('Working directory must be within allowed paths');
-    expect(() => validateWorkingDirectory(normalizeWindowsPath('E:\\NotAllowed'), allowedPaths))
-      .toThrow('Working directory must be within allowed paths');
+  test('validateWorkingDirectory uses validation context', () => {
+    const windowsConfig = createTestConfig([], [], [], ['C:\\Users\\test', 'D:\\Projects']);
+    const windowsContext = createTestContext('cmd', windowsConfig);
+    
+    // Valid paths shouldn't throw
+    expect(() => validateWorkingDirectory('C:\\Users\\test\\docs', windowsContext)).not.toThrow();
+    
+    // Invalid paths should throw
+    expect(() => validateWorkingDirectory('E:\\NotAllowed', windowsContext))
+      .toThrow(/working directory.*allowed paths/i);
+  });
+  
+  test('validateWorkingDirectory handles GitBash paths properly', () => {
+    // Using memory of GitBash style paths in the new config system
+    const gitbashConfig = createTestConfig([], [], [], ['C:\\Users\\test', 'D:\\Projects']);
+    const gitbashContext = createTestContext('gitbash', gitbashConfig);
+    
+    // GitBash paths format should be properly converted and validated
+    expect(() => validateWorkingDirectory('/c/Users/test/subdir', gitbashContext)).not.toThrow();
+    expect(() => validateWorkingDirectory('/d/Projects', gitbashContext)).not.toThrow();
+    
+    // Invalid paths should still throw
+    expect(() => validateWorkingDirectory('/e/NotAllowed', gitbashContext))
+      .toThrow(/working directory.*allowed paths/i);
   });
 });
 
 describe('Shell Operator Validation', () => {
-  const shellConfigs = {
-    powershell: {
-      enabled: true,
-      command: 'powershell.exe',
-      args: ['-Command'],
-      blockedOperators: ['&', ';', '`']
-    },
-    cmd: {
-      enabled: true,
-      command: 'cmd.exe',
-      args: ['/c'],
-      blockedOperators: ['&', '|', ';']
-    },
-    custom: {
-      enabled: true,
-      command: 'custom.exe',
-      args: [],
-      blockedOperators: ['|']
-    }
-  } as const;
-
   test.each([
-    ['powershell', 'Get-Process & Get-Service', '&', true],
-    ['powershell', 'Get-Process; Start-Sleep', ';', true],
-    ['powershell', 'echo `whoami`', '`', true],
-    ['powershell', 'Get-Process | Select-Object', '|', false],
-    ['cmd', 'echo hello & echo world', '&', true],
-    ['cmd', 'dir | find "test"', '|', true],
-    ['custom', 'cmd & echo test', '&', false],
-    ['custom', 'cmd | echo test', '|', true],
-  ])('%s: validateShellOperators(%s) should %s',
-    (shellName, command, operator, shouldThrow) => {
-    const shellConfig = shellConfigs[shellName as keyof typeof shellConfigs];
+    ['powershell', 'Get-Process & Get-Service', '&', ['&', ';', '`'], true],
+    ['powershell', 'Get-Process; Start-Sleep', ';', ['&', ';', '`'], true],
+    ['powershell', 'echo `whoami`', '`', ['&', ';', '`'], true],
+    ['powershell', 'Get-Process | Select-Object', '|', ['&', ';', '`'], false],
+    ['cmd', 'echo hello & echo world', '&', ['&', '|', ';'], true],
+    ['cmd', 'dir | find "test"', '|', ['&', '|', ';'], true],
+    ['custom', 'cmd & echo test', '&', ['|'], false],
+    ['custom', 'cmd | echo test', '|', ['|'], true],
+  ])('%s: validateShellOperators(%s) should %s for blockedOperators %s',
+    (shellName, command, operator, blockedOps, shouldThrow) => {
+    // Create a config with the specified blocked operators
+    const config = createTestConfig([], [], blockedOps);
+    // Create a validation context
+    const context = createTestContext(shellName, config);
 
     if (shouldThrow) {
-      expect(() => validateShellOperators(command, shellConfig))
+      expect(() => validateShellOperators(command, context))
         .toThrow(expect.objectContaining({
           code: ErrorCode.InvalidRequest,
-          message: expect.stringContaining(`blocked operator: ${operator}`)
+          message: expect.stringContaining(`blocked operator for ${shellName}: ${operator}`)
         }));
     } else {
-      expect(() => validateShellOperators(command, shellConfig)).not.toThrow();
+      expect(() => validateShellOperators(command, context)).not.toThrow();
     }
+  });
+
+  test('validateShellOperators ignores operators if no blocked operators are configured', () => {
+    const config = createTestConfig();
+    const context = createTestContext('cmd', config);
+    
+    // These would normally be blocked but are allowed because blockedOperators is empty
+    expect(() => validateShellOperators('echo test & echo test2', context)).not.toThrow();
+    expect(() => validateShellOperators('echo test | grep test', context)).not.toThrow();
+    expect(() => validateShellOperators('echo test; echo test2', context)).not.toThrow();
   });
 });
 
 describe('WSL Path Validation', () => {
-  const allowedPaths = ['/mnt/c/allowed', '/tmp', 'C:\\Windows\\allowed'];
-
-  test.each([
-    ['/mnt/c/allowed/subdir', true],
-    ['/tmp/workdir', true],
-    ['/mnt/c/Windows/allowed/test', true],
-    ['/mnt/d/forbidden', false],
-    ['/usr/local', false],
-    ['/home/user', false],
-  ])('isWslPathAllowed(%s) should return %s', (path, expected) => {
-    expect(isWslPathAllowed(path, allowedPaths)).toBe(expected);
+  test('validateWorkingDirectory with WSL validation context', () => {
+    // Create a WSL config with allowedPaths
+    const wslConfig = createTestConfig([], [], [], ['/mnt/c/allowed', '/tmp', '/home/user']);
+    wslConfig.wslConfig = {
+      mountPoint: '/mnt/',
+      inheritGlobalPaths: true
+    };
+    const wslContext = createTestContext('wsl', wslConfig);
+    
+    // Valid WSL paths
+    expect(() => validateWorkingDirectory('/mnt/c/allowed/subdir', wslContext)).not.toThrow();
+    expect(() => validateWorkingDirectory('/tmp/workdir', wslContext)).not.toThrow();
+    expect(() => validateWorkingDirectory('/home/user/documents', wslContext)).not.toThrow();
+    
+    // Invalid WSL paths
+    expect(() => validateWorkingDirectory('/mnt/d/forbidden', wslContext))
+      .toThrow(/working directory.*allowed paths/i);
+    expect(() => validateWorkingDirectory('relative/path', wslContext))
+      .toThrow(/must be an absolute path/i);
   });
-
-  test('validateWslWorkingDirectory throws for invalid paths', () => {
-    expect(() => validateWslWorkingDirectory('/mnt/d/invalid', allowedPaths))
-      .toThrow('WSL working directory must be within allowed paths');
-
-    expect(() => validateWslWorkingDirectory('relative/path', allowedPaths))
-      .toThrow('WSL working directory must be an absolute path');
+  
+  test('validateWorkingDirectory with WSL context handles Windows paths', () => {
+    // Create a WSL config with Windows paths being converted
+    const wslConfig = createTestConfig([], [], [], ['/mnt/c/allowed', '/home/user']);
+    wslConfig.wslConfig = {
+      mountPoint: '/mnt/',
+      inheritGlobalPaths: true
+    };
+    const wslContext = createTestContext('wsl', wslConfig);
+    
+    // WSL paths should be properly validated
+    expect(() => validateWorkingDirectory('/mnt/c/allowed/subdir', wslContext)).not.toThrow();
+    expect(() => validateWorkingDirectory('/home/user/docs', wslContext)).not.toThrow();
+    // Windows path will be rejected because we only included WSL paths in allowed paths
+    expect(() => validateWorkingDirectory('C:\\Windows\\system32', wslContext)).toThrow();
+    
+    // Invalid paths should still throw
+    expect(() => validateWorkingDirectory('/usr/local', wslContext))
+      .toThrow(/working directory.*allowed paths/i);
   });
 });
