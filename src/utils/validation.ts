@@ -170,14 +170,13 @@ export function convertWindowsToWslPath(windowsPath: string, mountPoint: string 
     const driveLetter = match[1].toLowerCase();
     let restOfPath = match[2].replace(/\\/g, '/'); // Normalize to forward slashes
 
-    // Remove leading slash from restOfPath if it exists, as it's part of the path components
-    if (restOfPath.startsWith('/')) {
-      restOfPath = restOfPath.substring(1);
-    }
+    // Remove all leading slashes and collapse duplicates within the path
+    restOfPath = restOfPath.replace(/^\/+/g, '');
+    restOfPath = restOfPath.replace(/\/+/g, '/');
 
-    // Handle trailing slashes for the main path part
+    // Trim a single trailing slash
     if (restOfPath.endsWith('/')) {
-        restOfPath = restOfPath.substring(0, restOfPath.length - 1);
+      restOfPath = restOfPath.slice(0, -1);
     }
 
     // Ensure mountPoint ends with a slash
