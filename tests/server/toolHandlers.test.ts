@@ -26,7 +26,7 @@ describe('Tool Handlers', () => {
       const server = new CLIServer(config);
       const result = await server._executeTool({ name: 'get_config', arguments: {} }) as CallToolResult;
 
-      const configData = JSON.parse(result.content[0].text);
+      const configData = JSON.parse(result.content[0].text as string);
 
       expect(configData.configuration.global.security.commandTimeout).toBe(30);
       expect(configData.configuration.shells.cmd.overrides.security.commandTimeout).toBe(60);
@@ -41,7 +41,7 @@ describe('Tool Handlers', () => {
       const config = buildTestConfig({
         global: {
           security: { restrictWorkingDirectory: true },
-          paths: { allowedPaths: ['C\\global'] }
+          paths: { allowedPaths: ['C:\\global'] }
         },
         shells: {
           wsl: {
@@ -56,11 +56,11 @@ describe('Tool Handlers', () => {
 
       const globalResult = await server._executeTool({
         name: 'validate_directories',
-        arguments: { directories: ['C\\global\\sub', 'C\\other'] }
+        arguments: { directories: ['C:\\global\\sub', 'C:\\other'] }
       }) as CallToolResult;
 
       expect(globalResult.isError).toBe(true);
-      expect(globalResult.content[0].text).toContain('C\\other');
+      expect(globalResult.content[0].text).toContain('C:\\other');
 
       const wslResult = await server._executeTool({
         name: 'validate_directories',
@@ -80,7 +80,7 @@ describe('Tool Handlers', () => {
       const config = buildTestConfig({
         global: {
           security: { restrictWorkingDirectory: true },
-          paths: { allowedPaths: ['C\\allowed'] }
+          paths: { allowedPaths: ['C:\\allowed'] }
         }
       });
 
@@ -88,16 +88,16 @@ describe('Tool Handlers', () => {
 
       const successResult = await server._executeTool({
         name: 'set_current_directory',
-        arguments: { path: 'C\\allowed\\sub' }
+        arguments: { path: 'C:\\allowed\\sub' }
       }) as CallToolResult;
 
       expect(successResult.isError).toBe(false);
-      expect(chdirSpy).toHaveBeenCalledWith('C\\allowed\\sub');
-      expect((server as any).serverActiveCwd).toBe('C\\allowed\\sub');
+      expect(chdirSpy).toHaveBeenCalledWith('C:\\allowed\\sub');
+      expect((server as any).serverActiveCwd).toBe('C:\\allowed\\sub');
 
       const failResult = await server._executeTool({
         name: 'set_current_directory',
-        arguments: { path: 'C\\not-allowed' }
+        arguments: { path: 'C:\\not-allowed' }
       }) as CallToolResult;
 
       expect(failResult.isError).toBe(true);

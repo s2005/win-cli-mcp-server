@@ -126,34 +126,38 @@ describe('Server active working directory initialization', () => {
     cwdSpy.mockRestore();
   });
 
-  test('initialDir chdir failure falls back to allowed path', () => {
+  test('initialDir chdir failure falls back to process.cwd() if within allowed paths', () => {
     const cwdSpy = jest.spyOn(process, 'cwd').mockReturnValue(ALLOWED_DIR);
     const chdirSpy = jest.spyOn(process, 'chdir').mockImplementation(() => { throw new Error('fail'); });
     const config = buildTestConfig({
       global: {
         security: { restrictWorkingDirectory: true },
-        paths: { allowedPaths: [ALLOWED_DIR], initialDir: 'C\\bad' }
+        paths: { allowedPaths: [ALLOWED_DIR], initialDir: 'C:\\bad' }
       }
     });
     const server = new CLIServer(config);
-    expect(chdirSpy).toHaveBeenCalledWith(ALLOWED_DIR);
-    expect((server as any).serverActiveCwd).toBeUndefined();
+    // Should attempt to change to initialDir first
+    expect(chdirSpy).toHaveBeenCalledWith('C:\\bad');
+    // Since process.cwd() returns ALLOWED_DIR which is in allowedPaths, it should set serverActiveCwd to ALLOWED_DIR
+    expect((server as any).serverActiveCwd).toBe(ALLOWED_DIR);
     chdirSpy.mockRestore();
     cwdSpy.mockRestore();
   });
 
-  test('initialDir not in allowedPaths uses first allowed path', () => {
+  test('initialDir not in allowedPaths and process.cwd() not in allowedPaths results in undefined serverActiveCwd', () => {
     const cwdSpy = jest.spyOn(process, 'cwd').mockReturnValue(OUTSIDE_DIR);
     const chdirSpy = jest.spyOn(process, 'chdir').mockImplementation(() => {});
     const config = buildTestConfig({
       global: {
         security: { restrictWorkingDirectory: true },
-        paths: { allowedPaths: [ALLOWED_DIR], initialDir: 'C\\outside' }
+        paths: { allowedPaths: [ALLOWED_DIR], initialDir: 'C:\\outside' }
       }
     });
     const server = new CLIServer(config);
-    expect(chdirSpy).toHaveBeenCalledWith(ALLOWED_DIR);
-    expect((server as any).serverActiveCwd).toBe(ALLOWED_DIR);
+    // It should attempt to use initialDir first
+    expect(chdirSpy).toHaveBeenCalledWith('C:\\outside');
+    // Since neither initialDir nor process.cwd() are in allowedPaths, serverActiveCwd should be undefined
+    expect((server as any).serverActiveCwd).toBeUndefined();
     chdirSpy.mockRestore();
     cwdSpy.mockRestore();
   });

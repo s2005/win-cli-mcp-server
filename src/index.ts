@@ -107,34 +107,50 @@ class CLIServer {
   }
 
   private initializeWorkingDirectory(): void {
+    let candidateCwd: string | undefined = undefined;
+    let chdirFailed = false;
     const startupMessages: string[] = [];
-    const restrictCwd = this.config.global.security.restrictWorkingDirectory;
-    const allowedPaths = this.config.global.paths.allowedPaths;
 
-    let candidateCwd = this.config.global.paths.initialDir;
-
-    // Validate candidate against allowed paths before attempting to chdir
-    if (restrictCwd && candidateCwd) {
-      if (!isPathAllowed(candidateCwd, allowedPaths)) {
-        startupMessages.push(`ERROR: Initial directory '${candidateCwd}' is not in allowed paths.`);
-        candidateCwd = allowedPaths[0];
-        if (candidateCwd) {
-          startupMessages.push(`INFO: Falling back to default allowed path '${candidateCwd}'.`);
-        }
+    // Try initial directory if configured
+    if (this.config.global.paths.initialDir && typeof this.config.global.paths.initialDir === 'string') {
+      try {
+        process.chdir(this.config.global.paths.initialDir);
+        candidateCwd = this.config.global.paths.initialDir;
+        startupMessages.push(`INFO: Successfully changed current working directory to configured initialDir: ${candidateCwd}`);
+      } catch (err: any) {
+        startupMessages.push(`ERROR: Failed to change directory to configured initialDir '${this.config.global.paths.initialDir}': ${err?.message}. Falling back to process CWD.`);
+        chdirFailed = true;
       }
     }
 
-    if (!candidateCwd) {
+    // Fallback to process.cwd()
+    if (!candidateCwd || chdirFailed) {
       candidateCwd = normalizeWindowsPath(process.cwd());
+      if (chdirFailed) {
+        startupMessages.push(`INFO: Current working directory remains: ${candidateCwd}`);
+      }
     }
 
-    try {
-      process.chdir(candidateCwd);
+    // Check if CWD is allowed based on global config
+    const restrictCwd = this.config.global.security.restrictWorkingDirectory;
+    const globalAllowedPaths = this.config.global.paths.allowedPaths;
+
+    if (restrictCwd && globalAllowedPaths.length > 0) {
+      const isCandidateCwdAllowed = isPathAllowed(candidateCwd!, globalAllowedPaths);
+      if (!isCandidateCwdAllowed) {
+        this.serverActiveCwd = undefined;
+        startupMessages.push(`INFO: Server's effective starting directory: ${candidateCwd}`);
+        startupMessages.push("INFO: 'restrictWorkingDirectory' is enabled, and this directory is not in the configured 'allowedPaths'.");
+        startupMessages.push("INFO: The server's active working directory is currently NOT SET.");
+        startupMessages.push("INFO: To run commands that don't specify a 'workingDir', you must first set a valid working directory using the 'set_current_directory' tool.");
+        startupMessages.push(`INFO: Configured allowed paths are: ${globalAllowedPaths.join(', ')}`);
+      } else {
+        this.serverActiveCwd = candidateCwd;
+        startupMessages.push(`INFO: Server's active working directory initialized to: ${this.serverActiveCwd}.`);
+      }
+    } else {
       this.serverActiveCwd = candidateCwd;
-      startupMessages.push(`INFO: Server's active working directory set to '${this.serverActiveCwd}'.`);
-    } catch (error: any) {
-      this.serverActiveCwd = undefined;
-      startupMessages.push(`ERROR: Failed to set working directory: ${error.message}`);
+      startupMessages.push(`INFO: Server's active working directory initialized to: ${this.serverActiveCwd}.`);
     }
 
     startupMessages.forEach(msg => console.error(msg));
@@ -517,29 +533,17 @@ class CLIServer {
         }
 
         case "set_current_directory": {
-          // Parse args
           const args = z.object({
             path: z.string()
           }).parse(toolParams.arguments);
 
-          // Determine if this is a GitBash-style path and handle accordingly
-          let newDir = args.path;
-          // If it's a GitBash path, normalize it to Windows format for Node.js
-          if (args.path.match(/^\/[a-z]\//i)) {
-            // Convert GitBash-style path (/c/path) to Windows format (C:/path)
-            const match = args.path.match(/^\/([a-z])(\/.*)$/i);
-            if (match) {
-              const drive = match[1].toUpperCase();
-              const remainder = match[2].replace(/\//g, '\\');
-              newDir = `${drive}:${remainder}`;
-            }
-          }
+          // Normalize the path (Windows style for server's internal use)
+          const newDir = normalizeWindowsPath(args.path);
 
-          // Validate the path
+          // Validate against global allowed paths
           try {
             if (this.config.global.security.restrictWorkingDirectory) {
-              const normalized = normalizeWindowsPath(newDir);
-              if (!isPathAllowed(normalized, this.config.global.paths.allowedPaths)) {
+              if (!isPathAllowed(newDir, this.config.global.paths.allowedPaths)) {
                 throw new Error(
                   `Directory must be within allowed paths: ${this.config.global.paths.allowedPaths.join(', ')}`
                 );
@@ -549,16 +553,16 @@ class CLIServer {
             // Change directory and update server state
             process.chdir(newDir);
             this.serverActiveCwd = newDir;
-            const currentDir = this.serverActiveCwd;
+            
             return {
               content: [{
                 type: "text",
-                text: `Current directory changed to: ${currentDir}`
+                text: `Current directory changed to: ${newDir}`
               }],
               isError: false,
               metadata: {
                 previousDirectory: args.path,
-                newDirectory: currentDir
+                newDirectory: newDir
               }
             };
           } catch (error) {
