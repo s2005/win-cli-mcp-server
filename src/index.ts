@@ -24,7 +24,6 @@ import {
   validateWorkingDirectory as validateWorkingDirectoryWithContext,
   normalizePathForShell
 } from './utils/pathValidation.js';
-import { convertWindowsToWslPath } from './utils/validation.js';
 import { validateDirectoriesAndThrow } from './utils/directoryValidator.js';
 import { spawn } from 'child_process';
 import { z } from 'zod';
@@ -466,12 +465,6 @@ class CLIServer {
           let workingDir: string;
           if (args.workingDir) {
             workingDir = normalizePathForShell(args.workingDir, context);
-            if (context.isWslShell && /^[A-Z]:\\/.test(args.workingDir)) {
-              workingDir = convertWindowsToWslPath(
-                args.workingDir,
-                shellConfig.wslConfig?.mountPoint ?? '/mnt/'
-              );
-            }
             if (shellConfig.security.restrictWorkingDirectory) {
               try {
                 validateWorkingDirectoryWithContext(workingDir, context);
@@ -494,12 +487,6 @@ class CLIServer {
               };
             }
             workingDir = this.serverActiveCwd;
-            if (context.isWslShell && /^[A-Z]:\\/.test(workingDir)) {
-              workingDir = convertWindowsToWslPath(
-                workingDir,
-                shellConfig.wslConfig?.mountPoint ?? '/mnt/'
-              );
-            }
 
             if (shellConfig.security.restrictWorkingDirectory) {
               try {
