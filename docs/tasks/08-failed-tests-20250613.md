@@ -4,13 +4,11 @@ This document lists the Jest tests that were failing as of the latest run. These
 
 ## Summary
 
-- **8 test suites failed**
-- **18 tests failed**
+- **6 test suites failed**
+- **13 tests failed**
 
 ## Failed Tests
 
-- **tests/validation/pathValidation.test.ts**
-  - Path Validation validateWorkingDirectory handles empty allowed paths
 - **tests/server/toolHandlers.test.ts**
   - Tool Handlers set_current_directory tool validates against global allowed paths
 - **tests/server/serverImplementation.test.ts**
@@ -27,11 +25,7 @@ This document lists the Jest tests that were failing as of the latest run. These
 - **tests/processManagement.test.ts**
   - Process Management should handle process spawn errors gracefully
   - Process Management should propagate shell process errors
-- **tests/getConfig.test.ts**
-  - get_config tool createSerializableConfig returns structured configuration
-  - get_config tool createSerializableConfig returns consistent config structure
-  - get_config tool createSerializableConfig handles empty shells config
-  - get_config tool get_config tool response format
+  
 - **tests/errorHandling.test.ts**
   - Error Handling should handle malformed JSON-RPC requests
   - Error Handling should recover from shell crashes
