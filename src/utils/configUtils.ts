@@ -1,48 +1,119 @@
-import { ServerConfig, BaseShellConfig } from '../types/config.js';
-import { getResolvedShellConfig } from './config.js';
+import type { ServerConfig, ResolvedShellConfig } from '../types/config.js';
 
 /**
- * Creates a structured copy of the configuration for external use
- * @param config The server configuration
- * @returns A serializable version of the configuration
+ * Create a safe, serializable version of the configuration for external use
  */
 export function createSerializableConfig(config: ServerConfig): any {
-  // Handle potentially malformed or old format configs
-  const global = config.global || {};
-  const security = global.security || {};
-  const restrictions = global.restrictions || {};
-  const paths = global.paths || {};
-  
-  return {
-    security: {
-      // Security config is now under global.security
-      maxCommandLength: security.maxCommandLength,
-      commandTimeout: security.commandTimeout,
-      enableInjectionProtection: security.enableInjectionProtection,
-      restrictWorkingDirectory: security.restrictWorkingDirectory,
-      
-      // Restrictions config is now under global.restrictions
-      blockedCommands: [...(restrictions.blockedCommands || [])],
-      blockedArguments: [...(restrictions.blockedArguments || [])],
-      
-      // Paths config is now under global.paths
-      allowedPaths: [...(paths.allowedPaths || [])],
+  const serializable: any = {
+    global: {
+      security: {
+        maxCommandLength: config.global.security.maxCommandLength,
+        commandTimeout: config.global.security.commandTimeout,
+        enableInjectionProtection: config.global.security.enableInjectionProtection,
+        restrictWorkingDirectory: config.global.security.restrictWorkingDirectory
+      },
+      restrictions: {
+        blockedCommands: [...config.global.restrictions.blockedCommands],
+        blockedArguments: [...config.global.restrictions.blockedArguments],
+        blockedOperators: [...config.global.restrictions.blockedOperators]
+      },
+      paths: {
+        allowedPaths: [...config.global.paths.allowedPaths],
+        initialDir: config.global.paths.initialDir
+      }
     },
-    shells: Object.entries(config.shells).reduce((acc, [key, shell]) => {
-      if (shell) {
-        // Get the resolved shell config which has merged global and shell-specific settings
-        const resolvedConfig = getResolvedShellConfig(config, key as keyof ServerConfig['shells']);
-        
-        acc[key] = {
-          enabled: shell.enabled,
-          // Shell command/args are now in the executable property
-          command: shell.executable?.command,
-          args: shell.executable?.args ? [...shell.executable.args] : [],
-          // blockedOperators are now in the resolved restrictions after applying overrides
-          blockedOperators: resolvedConfig?.restrictions?.blockedOperators ? [...resolvedConfig.restrictions.blockedOperators] : []
+    shells: {}
+  };
+
+  // Add shell configurations
+  for (const [shellName, shellConfig] of Object.entries(config.shells)) {
+    if (!shellConfig) continue;
+
+    const shellInfo: any = {
+      enabled: shellConfig.enabled,
+      executable: {
+        command: shellConfig.executable.command,
+        args: [...shellConfig.executable.args]
+      }
+    };
+
+    // Add overrides if present
+    if (shellConfig.overrides) {
+      shellInfo.overrides = {};
+
+      if (shellConfig.overrides.security) {
+        shellInfo.overrides.security = { ...shellConfig.overrides.security };
+      }
+
+      if (shellConfig.overrides.restrictions) {
+        shellInfo.overrides.restrictions = {
+          blockedCommands: shellConfig.overrides.restrictions.blockedCommands ?
+            [...shellConfig.overrides.restrictions.blockedCommands] : undefined,
+          blockedArguments: shellConfig.overrides.restrictions.blockedArguments ?
+            [...shellConfig.overrides.restrictions.blockedArguments] : undefined,
+          blockedOperators: shellConfig.overrides.restrictions.blockedOperators ?
+            [...shellConfig.overrides.restrictions.blockedOperators] : undefined
         };
       }
-      return acc;
-    }, {} as Record<string, any>)
+
+      if (shellConfig.overrides.paths) {
+        shellInfo.overrides.paths = {
+          allowedPaths: shellConfig.overrides.paths.allowedPaths ?
+            [...shellConfig.overrides.paths.allowedPaths] : undefined,
+          initialDir: shellConfig.overrides.paths.initialDir
+        };
+      }
+    }
+
+    // Add WSL-specific config if present
+    if ('wslConfig' in shellConfig && (shellConfig as any).wslConfig) {
+      const wslCfg = (shellConfig as any).wslConfig;
+      shellInfo.wslConfig = {
+        mountPoint: wslCfg.mountPoint,
+        inheritGlobalPaths: wslCfg.inheritGlobalPaths,
+        pathMapping: wslCfg.pathMapping ? {
+          enabled: wslCfg.pathMapping.enabled,
+          windowsToWsl: wslCfg.pathMapping.windowsToWsl
+        } : undefined
+      };
+    }
+
+    serializable.shells[shellName] = shellInfo;
+  }
+
+  return serializable;
+}
+
+/**
+ * Create a summary of resolved configuration for a specific shell
+ */
+export function createResolvedConfigSummary(
+  shellName: string,
+  resolved: ResolvedShellConfig
+): any {
+  return {
+    shell: shellName,
+    enabled: resolved.enabled,
+    executable: {
+      command: resolved.executable.command,
+      args: [...resolved.executable.args]
+    },
+    effectiveSettings: {
+      security: { ...resolved.security },
+      restrictions: {
+        blockedCommands: [...resolved.restrictions.blockedCommands],
+        blockedArguments: [...resolved.restrictions.blockedArguments],
+        blockedOperators: [...resolved.restrictions.blockedOperators]
+      },
+      paths: {
+        allowedPaths: [...resolved.paths.allowedPaths],
+        initialDir: resolved.paths.initialDir
+      }
+    },
+    wslConfig: resolved.wslConfig ? {
+      mountPoint: resolved.wslConfig.mountPoint,
+      inheritGlobalPaths: resolved.wslConfig.inheritGlobalPaths
+    } : undefined
   };
 }
+
