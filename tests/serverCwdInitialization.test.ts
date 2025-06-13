@@ -126,7 +126,7 @@ describe('Server active working directory initialization', () => {
     cwdSpy.mockRestore();
   });
 
-  test('initialDir chdir failure falls back to process.cwd()', () => {
+  test('initialDir chdir failure falls back to allowed path', () => {
     const cwdSpy = jest.spyOn(process, 'cwd').mockReturnValue(ALLOWED_DIR);
     const chdirSpy = jest.spyOn(process, 'chdir').mockImplementation(() => { throw new Error('fail'); });
     const config = buildTestConfig({
@@ -136,14 +136,13 @@ describe('Server active working directory initialization', () => {
       }
     });
     const server = new CLIServer(config);
-    expect(chdirSpy).toHaveBeenCalledWith('C\\bad');
-    // Use normalizeWindowsPath to handle path format differences (backslash vs forward slash)
-    expect(normalizeWindowsPath((server as any).serverActiveCwd)).toBe(normalizeWindowsPath(ALLOWED_DIR));
+    expect(chdirSpy).toHaveBeenCalledWith(ALLOWED_DIR);
+    expect((server as any).serverActiveCwd).toBeUndefined();
     chdirSpy.mockRestore();
     cwdSpy.mockRestore();
   });
 
-  test('initialDir not in allowedPaths leaves active cwd undefined', () => {
+  test('initialDir not in allowedPaths uses first allowed path', () => {
     const cwdSpy = jest.spyOn(process, 'cwd').mockReturnValue(OUTSIDE_DIR);
     const chdirSpy = jest.spyOn(process, 'chdir').mockImplementation(() => {});
     const config = buildTestConfig({
@@ -153,8 +152,8 @@ describe('Server active working directory initialization', () => {
       }
     });
     const server = new CLIServer(config);
-    expect(chdirSpy).toHaveBeenCalledWith('C\\outside');
-    expect((server as any).serverActiveCwd).toBeUndefined();
+    expect(chdirSpy).toHaveBeenCalledWith(ALLOWED_DIR);
+    expect((server as any).serverActiveCwd).toBe(ALLOWED_DIR);
     chdirSpy.mockRestore();
     cwdSpy.mockRestore();
   });
