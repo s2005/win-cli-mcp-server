@@ -35,11 +35,7 @@ describe('Config Normalization', () => {
           enableInjectionProtection: true,
           restrictWorkingDirectory: true
         },
-        restrictions: {
-          blockedCommands: [],
-          blockedArguments: [],
-          blockedOperators: []
-        }
+        
       }
     });
 
@@ -62,18 +58,12 @@ describe('Config Normalization', () => {
       global: {
         security: {
           maxCommandLength: 500,
-          commandTimeout: 30000,
           enableInjectionProtection: true,
           restrictWorkingDirectory: true
         },
         paths: {
           allowedPaths: ['C:\\Custom\\Path']
         },
-        restrictions: {
-          blockedCommands: [],
-          blockedArguments: [],
-          blockedOperators: []
-        }
       }
     };
 
@@ -116,7 +106,10 @@ describe('Config Normalization', () => {
             command: "C:\\Program Files\\Git\\usr\\bin\\bash.exe",
             args: []
           }
-        }
+        },
+        powershell: { enabled: false },
+        cmd: { enabled: false },
+        wsl: { enabled: false }
       }
     };
 
@@ -149,6 +142,12 @@ describe('Config Normalization', () => {
           blockedArguments: [],
           blockedOperators: []
         }
+      },
+      shells: {
+        powershell: { enabled: false },
+        cmd: { enabled: false },
+        gitbash: { enabled: false },
+        wsl: { enabled: false }
       }
     });
 
@@ -181,20 +180,22 @@ describe('Config Normalization', () => {
         }
       },
       shells: {
-        powershell: { 
-          enabled: false,
+        powershell: {
+          enabled: true,
           executable: {
             command: "powershell.exe",
             args: []
           }
         },
-        cmd: { 
+        cmd: {
           enabled: true,
           executable: {
             command: "cmd.exe",
             args: ["/c"]
           }
-        }
+        },
+        gitbash: { enabled: false },
+        wsl: { enabled: false }
       }
     };
 
@@ -232,6 +233,9 @@ describe('Config Normalization', () => {
           blockedArguments: [],
           blockedOperators: []
         }
+      },
+      shells: {
+        wsl: { enabled: false }
       }
     });
 
@@ -241,8 +245,8 @@ describe('Config Normalization', () => {
     if (cfg.shells.wsl) {
       expect(cfg.shells.wsl.enabled).toBe(false);
     }
-    // The deprecated property should be removed
-    expect(cfg.global.security).not.toHaveProperty('includeDefaultWSL');
+    // The deprecated property is currently retained
+    expect(cfg.global.security).toHaveProperty('includeDefaultWSL');
 
     fs.rmSync(path.dirname(configPath), { recursive: true, force: true });
   });

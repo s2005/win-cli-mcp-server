@@ -36,7 +36,10 @@ describe('Conditional Shell Configuration', () => {
   test('WSL only included with explicit shells.wsl configuration', () => {
     const configPath = createTempConfig({
       shells: {
-        wsl: { enabled: true }
+        wsl: { enabled: true },
+        powershell: { enabled: false },
+        cmd: { enabled: false },
+        gitbash: { enabled: false }
       }
     });
 

@@ -60,24 +60,24 @@ describe('Async Command Execution', () => {
     if (config.shells.powershell) config.shells.powershell.enabled = false;
     if (config.shells.gitbash) config.shells.gitbash.enabled = false;
     
-    // Use CMD shell instead of WSL for tests since it's more reliable in test environment
-    config.shells.cmd = {
+    // Configure WSL shell to use the emulator for cross platform tests
+    config.shells.wsl = {
       enabled: true,
       executable: {
-        command: 'cmd.exe',
-        args: ['/c']
+        command: 'node',
+        args: [wslEmulatorPath, '-e']
       },
       overrides: {
-        restrictions: {
-          blockedOperators: ['&', '|', ';', '`']
-        }
+        restrictions: { blockedOperators: ['&', '|', ';', '`'] }
+      },
+      wslConfig: {
+        mountPoint: '/mnt/',
+        inheritGlobalPaths: true
       }
     };
-    
-    // Disable WSL shell to avoid test issues
-    if (config.shells.wsl) {
-      config.shells.wsl.enabled = false;
-    }
+
+    // Disable other shells
+    if (config.shells.cmd) config.shells.cmd.enabled = false;
     
     server = new CLIServer(config);
   });
@@ -87,7 +87,7 @@ describe('Async Command Execution', () => {
     const promises = commands.map(cmd =>
       server._executeTool({
         name: 'execute_command',
-        arguments: { shell: 'cmd', command: cmd }
+        arguments: { shell: 'wsl', command: cmd }
       }) as Promise<CallToolResult>
     );
 
@@ -116,7 +116,7 @@ describe('Async Command Execution', () => {
       try {
         return await server._executeTool({
           name: 'execute_command',
-          arguments: { shell: 'cmd', command: cmd.startsWith('fail') ? 'exit 1' : cmd } 
+          arguments: { shell: 'wsl', command: cmd.startsWith('fail') ? 'exit 1' : cmd }
         }) as CallToolResult;
       } finally {
         active--;
@@ -145,7 +145,7 @@ describe('Async Command Execution', () => {
     const promises = cmds.map(cmd =>
       server._executeTool({
         name: 'execute_command',
-        arguments: { shell: 'cmd', command: cmd }
+        arguments: { shell: 'wsl', command: cmd }
       }) as Promise<CallToolResult>
     );
 
