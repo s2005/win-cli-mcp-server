@@ -88,9 +88,9 @@ describe('loadConfig initialDir handling', () => {
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
     const configPath = createTempConfig({ security: { initialDir: null } });
     const cfg = loadConfig(configPath);
-    // In the new implementation, null is used instead of undefined
+    // In the new implementation, null is preserved and no warning is emitted
     expect(cfg.global.paths.initialDir).toBeNull();
-    expect(warnSpy).toHaveBeenCalled();
+    expect(warnSpy).not.toHaveBeenCalled();
     fs.rmSync(path.dirname(configPath), { recursive: true, force: true });
     warnSpy.mockRestore();
   });
