@@ -30,9 +30,11 @@ import { z } from 'zod';
 import { readFileSync } from 'fs';
 import path from 'path';
 import { buildToolDescription } from './utils/toolDescription.js';
+import { buildExecuteCommandSchema, buildValidateDirectoriesSchema } from './utils/toolSchemas.js';
+import { buildExecuteCommandDescription, buildValidateDirectoriesDescription, buildGetConfigDescription } from './utils/toolDescription.js';
 import { loadConfig, createDefaultConfig, getResolvedShellConfig } from './utils/config.js';
 import { createSerializableConfig, createResolvedConfigSummary } from './utils/configUtils.js';
-import type { ServerConfig, ResolvedShellConfig } from './types/config.js';
+import type { ServerConfig, ResolvedShellConfig, GlobalConfig } from './types/config.js';
 import { createRequire } from 'module';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname } from 'path';
@@ -330,11 +332,37 @@ class CLIServer {
     this.server.setRequestHandler(ListResourcesRequestSchema, async () => {
       const resources: Array<{uri:string,name:string,description:string,mimeType:string}> = [];
       
-      // Add a resource for CLI configuration
+      // Add resources for configuration
       resources.push({
         uri: "cli://config",
         name: "CLI Server Configuration",
-        description: "Main CLI server configuration (excluding sensitive data)",
+        description: "Complete server configuration with global and shell-specific settings",
+        mimeType: "application/json"
+      });
+
+      resources.push({
+        uri: "cli://config/global",
+        name: "Global Configuration",
+        description: "Global default settings applied to all shells",
+        mimeType: "application/json"
+      });
+      
+      // Add shell-specific configuration resources for each enabled shell
+      const enabledShells = this.getEnabledShells();
+      for (const shellName of enabledShells) {
+        resources.push({
+          uri: `cli://config/shells/${shellName}`,
+          name: `${shellName} Shell Configuration`,
+          description: `Resolved configuration for ${shellName} shell`,
+          mimeType: "application/json"
+        });
+      }
+      
+      // Add security information resource
+      resources.push({
+        uri: "cli://info/security",
+        name: "Security Information",
+        description: "Current security settings and restrictions",
         mimeType: "application/json"
       });
 
@@ -359,71 +387,144 @@ class CLIServer {
         };
       }
       
+      // Handle global configuration
+      if (uri === "cli://config/global") {
+        const globalConfig = createSerializableConfig({
+          global: this.config.global,
+          shells: {} // Add empty shells object to satisfy ServerConfig type
+        });
+        
+        return {
+          contents: [{
+            uri,
+            mimeType: "application/json",
+            text: JSON.stringify(globalConfig.global, null, 2)
+          }]
+        };
+      }
+      
+      // Handle shell-specific configuration
+      const shellMatch = uri.match(/^cli:\/\/config\/shells\/([a-zA-Z0-9_-]+)$/);
+      if (shellMatch) {
+        const shellName = shellMatch[1];
+        const resolved = this.getShellConfig(shellName);
+        
+        if (!resolved) {
+          throw new McpError(
+            ErrorCode.InvalidRequest,
+            `Shell '${shellName}' not found or not enabled`
+          );
+        }
+        
+        const shellInfo = createResolvedConfigSummary(shellName, resolved);
+        
+        return {
+          contents: [{
+            uri,
+            mimeType: "application/json",
+            text: JSON.stringify(shellInfo, null, 2)
+          }]
+        };
+      }
+      
+      // Handle security information
+      if (uri === "cli://info/security") {
+        const securityInfo: any = {
+          globalSettings: {
+            restrictWorkingDirectory: this.config.global.security.restrictWorkingDirectory,
+            enableInjectionProtection: this.config.global.security.enableInjectionProtection,
+            maxCommandLength: this.config.global.security.maxCommandLength,
+            defaultCommandTimeout: this.config.global.security.commandTimeout
+          },
+          globalAllowedPaths: this.config.global.paths.allowedPaths,
+          enabledShells: this.getEnabledShells(),
+          shellSpecificSettings: {}
+        };
+        
+        // Add shell-specific security settings
+        for (const [shellName, config] of this.resolvedConfigs.entries()) {
+          securityInfo.shellSpecificSettings[shellName] = {
+            timeout: config.security.commandTimeout,
+            maxCommandLength: config.security.maxCommandLength,
+            restrictedPaths: config.paths.allowedPaths,
+            blockedCommands: config.restrictions.blockedCommands,
+            blockedOperators: config.restrictions.blockedOperators
+          };
+        }
+        
+        return {
+          contents: [{
+            uri,
+            mimeType: "application/json",
+            text: JSON.stringify(securityInfo, null, 2)
+          }]
+        };
+      }
+      
       throw new McpError(
         ErrorCode.InvalidRequest,
         `Unknown resource URI: ${uri}`
       );
     });
 
-    // List available tools: log execute_command description then return tools
+    // List available tools with dynamic descriptions and schemas
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
-      const allowedShells = (Object.keys(this.config.shells) as Array<keyof typeof this.config.shells>)
-        .filter(shell => {
-          const shellConf = this.config.shells[shell];
-          return shellConf && shellConf.enabled; // Check shellConf exists
-        });
-      const descriptionLines = [
-        ...buildToolDescription(allowedShells)
-      ];
-      const description = descriptionLines.join("\n");
-      console.error(`[tool: execute_command] Description:\n${description}`);
-      const tools = [
-        {
+      // Get enabled shells and their resolved configurations
+      const enabledShells = this.getEnabledShells();
+      const tools = [];
+
+      // Add execute_command tool with dynamic description and schema
+      if (enabledShells.length > 0) {
+        const executeCommandDescription = buildExecuteCommandDescription(this.resolvedConfigs);
+        const executeCommandSchema = buildExecuteCommandSchema(enabledShells, this.resolvedConfigs);
+        
+        console.error(`[tool: execute_command] Description:\n${executeCommandDescription}`);
+        
+        tools.push({
           name: "execute_command",
-          description,
-          inputSchema: {
-            type: "object",
-            properties: {
-              shell: { type: "string", enum: allowedShells, description: "Shell to use for command execution" },
-              command: { type: "string", description: "Command to execute" },
-              workingDir: { type: "string", description: "Working directory (optional)" }
-            },
-            required: ["shell", "command"]
-          }
-        },
-        {
-          name: "get_current_directory",
-          description: "Get the current working directory",
-          inputSchema: { type: "object", properties: {} }
-        },
-        {
-          name: "set_current_directory",
-          description: "Set the current working directory",
-          inputSchema: { 
-            type: "object", 
-            properties: { 
-              path: { type: "string", description: "Path to set as current working directory" } 
-            },
-            required: ["path"]
-          }
-        },
-        {
-          name: "get_config",
-          description: "Get the windows CLI server configuration",
-          inputSchema: { type: "object", properties: {} }
-        },
-        {
-          name: "validate_directories",
-          description: "Check if directories are within allowed paths (only available when restrictWorkingDirectory is enabled)",
-          inputSchema: {
-            type: "object",
-            properties: {
-              directories: { type: "array", items: { type: "string" }, description: "List of directories to validate" }
-            },
-            required: ["directories"]
-          }
+          description: executeCommandDescription,
+          inputSchema: executeCommandSchema
+        });
+      }
+
+      // Add directory management tools
+      tools.push({
+        name: "get_current_directory",
+        description: "Get the current working directory",
+        inputSchema: { type: "object", properties: {} }
+      });
+      
+      tools.push({
+        name: "set_current_directory",
+        description: "Set the current working directory",
+        inputSchema: { 
+          type: "object", 
+          properties: { 
+            path: { type: "string", description: "Path to set as current working directory" } 
+          },
+          required: ["path"]
         }
-      ];
+      });
+      
+      // Add get_config with enhanced description
+      tools.push({
+        name: "get_config",
+        description: buildGetConfigDescription(),
+        inputSchema: { type: "object", properties: {} }
+      });
+      
+      // Add validate_directories only when path restrictions are enabled
+      if (this.config.global.security.restrictWorkingDirectory) {
+        const validateDescription = buildValidateDirectoriesDescription(enabledShells.length > 0);
+        const validateSchema = buildValidateDirectoriesSchema(enabledShells);
+        
+        tools.push({
+          name: "validate_directories",
+          description: validateDescription,
+          inputSchema: validateSchema
+        });
+      }
+      
       return { tools };
     });
 
@@ -592,9 +693,18 @@ class CLIServer {
         }
 
         try {
-          const args = ValidateDirectoriesArgsSchema.parse(toolParams.arguments);
+          // Build schema dynamically based on enabled shells
+          const enabledShells = this.getEnabledShells();
+          const schema = z.object({
+            directories: z.array(z.string()).min(1),
+            shell: enabledShells.length > 0 
+              ? z.enum([...enabledShells] as [string, ...string[]]).optional()
+              : z.string().optional()
+          });
+          
+          const args = schema.parse(toolParams.arguments);
           const { directories } = args;
-          const shellName = (args as any).shell as string | undefined;
+          const shellName = args.shell;
 
           if (shellName) {
             const shellConfig = this.getShellConfig(shellName);
