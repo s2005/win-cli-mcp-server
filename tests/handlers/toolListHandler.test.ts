@@ -1,4 +1,5 @@
 import { describe, test, expect } from '@jest/globals';
+import path from 'path';
 import { CLIServer } from '../../src/index.js';
 import { buildTestConfig } from '../helpers/testUtils.js';
 import { executeListTools } from '../helpers/testServerUtils.js';
@@ -10,7 +11,7 @@ describe('ListTools Handler', () => {
       shells: {
         cmd: { enabled: true, executable: { command: 'cmd.exe', args: ['/c'] } },
         powershell: { enabled: false, executable: { command: 'powershell.exe', args: [] } },
-        wsl: { enabled: true, executable: { command: 'wsl.exe', args: ['-e'] } }
+        wsl: { enabled: true, executable: { command: 'node', args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] } }
       }
     });
 
@@ -53,7 +54,7 @@ describe('ListTools Handler', () => {
     const config = buildTestConfig({
       shells: {
         cmd: { enabled: true, executable: { command: 'cmd.exe', args: ['/c'] } },
-        wsl: { enabled: true, executable: { command: 'wsl.exe', args: ['-e'] } },
+        wsl: { enabled: true, executable: { command: 'node', args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] } },
         gitbash: { enabled: true, executable: { command: 'bash.exe', args: ['-c'] } }
       }
     });
@@ -74,7 +75,7 @@ describe('ListTools Handler', () => {
         security: { restrictWorkingDirectory: true }
       },
       shells: {
-        wsl: { enabled: true, executable: { command: 'wsl.exe', args: ['-e'] } }
+        wsl: { enabled: true, executable: { command: 'node', args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] } }
       }
     });
 

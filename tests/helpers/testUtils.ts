@@ -1,4 +1,5 @@
 import { DEFAULT_CONFIG } from '../../src/utils/config.js';
+import path from 'path';
 import type { 
   ServerConfig, 
   GlobalConfig,
@@ -74,6 +75,30 @@ export function buildShellConfig(
   }
 
   return base;
+}
+
+/**
+ * Create WSL emulator configuration for tests
+ */
+export function createWslEmulatorConfig(overrides: Partial<WslShellConfig> = {}): WslShellConfig {
+  const wslEmulatorPath = path.resolve(process.cwd(), 'scripts/wsl-emulator.js');
+  
+  return {
+    enabled: true,
+    executable: {
+      command: 'node',
+      args: [wslEmulatorPath, '-e']
+    },
+    wslConfig: {
+      mountPoint: '/mnt/',
+      inheritGlobalPaths: true,
+      pathMapping: {
+        enabled: true,
+        windowsToWsl: true
+      }
+    },
+    ...overrides
+  };
 }
 
 /**

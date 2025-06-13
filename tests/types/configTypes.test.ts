@@ -1,4 +1,5 @@
 import { describe, test, expect } from '@jest/globals';
+import path from 'path';
 import { isWslShellConfig, hasWslConfig } from '../../src/utils/configTypes';
 import type { BaseShellConfig, WslShellConfig } from '../../src/types/config';
 
@@ -7,7 +8,7 @@ describe('Config Type Guards', () => {
     test('identifies WSL shell config', () => {
       const wslShell: WslShellConfig = {
         enabled: true,
-        executable: { command: 'wsl.exe', args: ['-e'] },
+        executable: { command: 'node', args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] },
         wslConfig: {
           mountPoint: '/mnt/',
           inheritGlobalPaths: true

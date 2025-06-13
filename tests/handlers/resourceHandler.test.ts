@@ -1,4 +1,5 @@
 import { describe, test, expect } from '@jest/globals';
+import path from 'path';
 import { CLIServer } from '../../src/index.js';
 import { buildTestConfig } from '../helpers/testUtils.js';
 import { executeListResources, executeReadResource } from '../helpers/testServerUtils.js';
@@ -10,7 +11,7 @@ describe('Resource Handler', () => {
       const config = buildTestConfig({
         shells: {
           cmd: { enabled: true, executable: { command: 'cmd.exe', args: ['/c'] } },
-          wsl: { enabled: true, executable: { command: 'wsl.exe', args: ['-e'] } }
+          wsl: { enabled: true, executable: { command: 'node', args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] } }
         }
       });
 
@@ -94,7 +95,7 @@ describe('Resource Handler', () => {
         shells: {
           wsl: {
             enabled: true,
-            executable: { command: 'wsl.exe', args: ['-e'] },
+            executable: { command: 'node', args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] },
             overrides: {
               security: { commandTimeout: 120 },
               restrictions: { blockedCommands: ['wsl-cmd'] }

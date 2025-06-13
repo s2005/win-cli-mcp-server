@@ -35,7 +35,11 @@ describe('Config Normalization', () => {
           enableInjectionProtection: true,
           restrictWorkingDirectory: true
         },
-        
+        restrictions: {
+          blockedCommands: [],
+          blockedArguments: [],
+          blockedOperators: []
+        }
       }
     });
 
@@ -58,12 +62,18 @@ describe('Config Normalization', () => {
       global: {
         security: {
           maxCommandLength: 500,
+          commandTimeout: 30,
           enableInjectionProtection: true,
           restrictWorkingDirectory: true
         },
         paths: {
           allowedPaths: ['C:\\Custom\\Path']
         },
+        restrictions: {
+          blockedCommands: [],
+          blockedArguments: [],
+          blockedOperators: []
+        }
       }
     };
 
@@ -107,9 +117,9 @@ describe('Config Normalization', () => {
             args: []
           }
         },
-        powershell: { enabled: false },
-        cmd: { enabled: false },
-        wsl: { enabled: false }
+        powershell: { enabled: false, executable: { command: 'powershell.exe', args: [] } },
+        cmd: { enabled: false, executable: { command: 'cmd.exe', args: ['/c'] } },
+        wsl: { enabled: false, executable: { command: 'node', args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] } }
       }
     };
 
@@ -144,10 +154,10 @@ describe('Config Normalization', () => {
         }
       },
       shells: {
-        powershell: { enabled: false },
-        cmd: { enabled: false },
-        gitbash: { enabled: false },
-        wsl: { enabled: false }
+        powershell: { enabled: false, executable: { command: 'powershell.exe', args: [] } },
+        cmd: { enabled: false, executable: { command: 'cmd.exe', args: ['/c'] } },
+        gitbash: { enabled: false, executable: { command: 'bash.exe', args: ['-c'] } },
+        wsl: { enabled: false, executable: { command: 'node', args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] } }
       }
     });
 
@@ -194,8 +204,8 @@ describe('Config Normalization', () => {
             args: ["/c"]
           }
         },
-        gitbash: { enabled: false },
-        wsl: { enabled: false }
+        gitbash: { enabled: false, executable: { command: 'bash.exe', args: ['-c'] } },
+        wsl: { enabled: false, executable: { command: 'node', args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] } }
       }
     };
 
@@ -235,7 +245,7 @@ describe('Config Normalization', () => {
         }
       },
       shells: {
-        wsl: { enabled: false }
+        wsl: { enabled: false, executable: { command: 'node', args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] } }
       }
     });
 
@@ -369,8 +379,8 @@ describe('Shell Config Resolution', () => {
         wsl: {
           enabled: true,
           executable: {
-            command: 'wsl.exe',
-            args: []
+            command: 'node',
+            args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e']
           },
           wslConfig: {
             mountPoint: '/mnt/',

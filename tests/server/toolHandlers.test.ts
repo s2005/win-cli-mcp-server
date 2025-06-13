@@ -1,4 +1,5 @@
 import { describe, test, expect, jest } from '@jest/globals';
+import path from 'path';
 import { CLIServer } from '../../src/index.js';
 import { buildTestConfig } from '../helpers/testUtils.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
@@ -46,7 +47,7 @@ describe('Tool Handlers', () => {
         shells: {
           wsl: {
             enabled: true,
-            executable: { command: 'wsl.exe', args: ['-e'] },
+            executable: { command: 'node', args: [path.resolve(process.cwd(), 'scripts/wsl-emulator.js'), '-e'] },
             overrides: { paths: { allowedPaths: ['/home/user', '/tmp'] } }
           }
         }
