@@ -63,6 +63,7 @@ const parseArgs = async () => {
 
 const ValidateDirectoriesArgsSchema = z.object({
   directories: z.array(z.string()),
+  shell: z.string().optional()
 });
 
 
@@ -603,58 +604,87 @@ class CLIServer {
           };
         }
 
-        const args = ValidateDirectoriesArgsSchema.parse(toolParams.arguments);
-        const { directories } = args;
+        try {
+          const args = ValidateDirectoriesArgsSchema.parse(toolParams.arguments);
+          const { directories } = args;
+          const shellName = (args as any).shell as string | undefined;
 
-        const shellName = (args as any).shell as string | undefined;
+          if (shellName) {
+            const shellConfig = this.getShellConfig(shellName);
+            if (!shellConfig) {
+              return {
+                content: [{
+                  type: "text",
+                  text: `Shell '${shellName}' is not configured or enabled`
+                }],
+                isError: true,
+                metadata: {}
+              };
+            }
 
-        if (shellName) {
-          const shellConfig = this.getShellConfig(shellName);
-          if (!shellConfig) {
+            const context = createValidationContext(shellName, shellConfig);
+            const invalidDirs: string[] = [];
+
+            for (const dir of directories) {
+              try {
+                validateWorkingDirectoryWithContext(dir, context);
+              } catch (error) {
+                invalidDirs.push(dir);
+              }
+            }
+
+            if (invalidDirs.length > 0) {
+              return {
+                content: [{
+                  type: "text",
+                  text: `The following directories are invalid for ${shellName}: ${invalidDirs.join(', ')}. Allowed paths: ${shellConfig.paths.allowedPaths.join(', ')}`
+                }],
+                isError: true,
+                metadata: { invalidDirectories: invalidDirs, shell: shellName }
+              };
+            }
+          } else {
+            validateDirectoriesAndThrow(directories, this.config.global.paths.allowedPaths);
+          }
+
+          return {
+            content: [{
+              type: "text",
+              text: "All specified directories are valid and within allowed paths."
+            }],
+            isError: false,
+            metadata: {}
+          };
+        } catch (error: any) {
+          if (error instanceof z.ZodError) {
             return {
               content: [{
                 type: "text",
-                text: `Shell '${shellName}' is not configured or enabled`
+                text: `Invalid arguments for validate_directories: ${error.errors.map(e => `${e.path.join('.')} - ${e.message}`).join(', ')}`
+              }],
+              isError: true,
+              metadata: {}
+            };
+          } else if (error instanceof McpError) {
+            return {
+              content: [{
+                type: "text",
+                text: error.message
+              }],
+              isError: true,
+              metadata: {}
+            };
+          } else {
+            return {
+              content: [{
+                type: "text",
+                text: `An unexpected error occurred during directory validation: ${error.message || String(error)}`
               }],
               isError: true,
               metadata: {}
             };
           }
-
-          const context = createValidationContext(shellName, shellConfig);
-          const invalidDirs: string[] = [];
-
-          for (const dir of directories) {
-            try {
-              validateWorkingDirectoryWithContext(dir, context);
-            } catch (error) {
-              invalidDirs.push(dir);
-            }
-          }
-
-          if (invalidDirs.length > 0) {
-            return {
-              content: [{
-                type: "text",
-                text: `The following directories are invalid for ${shellName}: ${invalidDirs.join(', ')}. Allowed paths: ${shellConfig.paths.allowedPaths.join(', ')}`
-              }],
-              isError: true,
-              metadata: { invalidDirectories: invalidDirs, shell: shellName }
-            };
-          }
-        } else {
-          validateDirectoriesAndThrow(directories, this.config.global.paths.allowedPaths);
         }
-
-        return {
-          content: [{
-            type: "text",
-            text: "All specified directories are valid and within allowed paths."
-          }],
-          isError: false,
-          metadata: {}
-        };
-      }
       }
 
 

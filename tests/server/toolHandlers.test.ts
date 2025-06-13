@@ -1,4 +1,4 @@
-import { describe, test, expect } from '@jest/globals';
+import { describe, test, expect, jest } from '@jest/globals';
 import { CLIServer } from '../../src/index.js';
 import { buildTestConfig } from '../helpers/testUtils.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
