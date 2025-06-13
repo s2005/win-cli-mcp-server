@@ -59,15 +59,6 @@ Provide a **robust Windows⇄WSL path bridge** used by both normalisation and va
 6. **Docs / Changelog**
    * Update `CHANGELOG.md` – *Fixed: Unified WSL path handling for Windows drive inputs*.
 
-## Estimated Effort
-
-| Task | Time |
-|------|------|
-| Code changes (items 1–3) | 1.5 h |
-| New/updated tests | 0.5 h |
-| Docs & cleanup | 0.25 h |
-| **Total** | **≈2.25 h** |
-
 ## Risk & Mitigation
 
 * **Risk:** accidental regression for paths already accepted (pure Linux style).
