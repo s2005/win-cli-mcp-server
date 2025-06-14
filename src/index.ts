@@ -10,27 +10,31 @@ import {
   ErrorCode,
   McpError,
 } from "@modelcontextprotocol/sdk/types.js";
-import { 
+import {
   isCommandBlocked,
   isArgumentBlocked,
   parseCommand,
   extractCommandName,
   validateShellOperators,
-  normalizeWindowsPath,
-  validateWorkingDirectory,
-  validateWslWorkingDirectory,
-  convertWindowsToWslPath,
-  isPathAllowed
+  isPathAllowed,
+  normalizeWindowsPath
 } from './utils/validation.js';
+import { createValidationContext, ValidationContext } from './utils/validationContext.js';
+import {
+  validateWorkingDirectory as validateWorkingDirectoryWithContext,
+  normalizePathForShell
+} from './utils/pathValidation.js';
 import { validateDirectoriesAndThrow } from './utils/directoryValidator.js';
 import { spawn } from 'child_process';
 import { z } from 'zod';
 import { readFileSync } from 'fs';
 import path from 'path';
 import { buildToolDescription } from './utils/toolDescription.js';
-import { loadConfig, createDefaultConfig } from './utils/config.js';
-import { createSerializableConfig } from './utils/configUtils.js';
-import type { ServerConfig, ShellConfig } from './types/config.js'; // Added ShellConfig
+import { buildExecuteCommandSchema, buildValidateDirectoriesSchema } from './utils/toolSchemas.js';
+import { buildExecuteCommandDescription, buildValidateDirectoriesDescription, buildGetConfigDescription } from './utils/toolDescription.js';
+import { loadConfig, createDefaultConfig, getResolvedShellConfig } from './utils/config.js';
+import { createSerializableConfig, createResolvedConfigSummary } from './utils/configUtils.js';
+import type { ServerConfig, ResolvedShellConfig, GlobalConfig } from './types/config.js';
 import { createRequire } from 'module';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname } from 'path';
@@ -61,15 +65,16 @@ const parseArgs = async () => {
 
 const ValidateDirectoriesArgsSchema = z.object({
   directories: z.array(z.string()),
+  shell: z.string().optional()
 });
 
 
 class CLIServer {
   private server: Server;
-  private allowedPaths: Set<string>;
-  private blockedCommands: Set<string>;
-  private serverActiveCwd: string | undefined;
   private config: ServerConfig;
+  private serverActiveCwd: string | undefined;
+  // Cache resolved configurations for performance
+  private resolvedConfigs: Map<string, ResolvedShellConfig> = new Map();
 
   constructor(config: ServerConfig) {
     this.config = config;
@@ -79,29 +84,48 @@ class CLIServer {
     }, {
       capabilities: {
         tools: {},
-        resources: {}  // Add resources capability
+        resources: {}
       }
     });
 
-    // Initialize from config
-    this.allowedPaths = new Set(config.security.allowedPaths);
-    this.blockedCommands = new Set(config.security.blockedCommands);
+    // Pre-resolve enabled shell configurations
+    this.initializeShellConfigs();
 
+    // Initialize server working directory
+    this.initializeWorkingDirectory();
+
+    this.setupHandlers();
+  }
+
+  private initializeShellConfigs(): void {
+    for (const [shellName, shellConfig] of Object.entries(this.config.shells)) {
+      if (shellConfig?.enabled) {
+        const resolved = getResolvedShellConfig(this.config, shellName as keyof ServerConfig['shells']);
+        if (resolved) {
+          this.resolvedConfigs.set(shellName, resolved);
+        }
+      }
+    }
+  }
+
+  private initializeWorkingDirectory(): void {
     let candidateCwd: string | undefined = undefined;
     let chdirFailed = false;
     const startupMessages: string[] = [];
 
-    if (this.config.security.initialDir && typeof this.config.security.initialDir === 'string') {
+    // Try initial directory if configured
+    if (this.config.global.paths.initialDir && typeof this.config.global.paths.initialDir === 'string') {
       try {
-        process.chdir(this.config.security.initialDir);
-        candidateCwd = this.config.security.initialDir;
+        process.chdir(this.config.global.paths.initialDir);
+        candidateCwd = this.config.global.paths.initialDir;
         startupMessages.push(`INFO: Successfully changed current working directory to configured initialDir: ${candidateCwd}`);
       } catch (err: any) {
-        startupMessages.push(`ERROR: Failed to change directory to configured initialDir '${this.config.security.initialDir}': ${err?.message}. Falling back to process CWD.`);
+        startupMessages.push(`ERROR: Failed to change directory to configured initialDir '${this.config.global.paths.initialDir}': ${err?.message}. Falling back to process CWD.`);
         chdirFailed = true;
       }
     }
 
+    // Fallback to process.cwd()
     if (!candidateCwd || chdirFailed) {
       candidateCwd = normalizeWindowsPath(process.cwd());
       if (chdirFailed) {
@@ -109,19 +133,19 @@ class CLIServer {
       }
     }
 
-    const restrictCwd = this.config.security.restrictWorkingDirectory;
-    const allowedPathsDefined = this.config.security.allowedPaths && this.config.security.allowedPaths.length > 0;
-    const normalizedAllowedPathsFromConfig = this.config.security.allowedPaths.map(p => normalizeWindowsPath(p));
+    // Check if CWD is allowed based on global config
+    const restrictCwd = this.config.global.security.restrictWorkingDirectory;
+    const globalAllowedPaths = this.config.global.paths.allowedPaths;
 
-    if (restrictCwd && allowedPathsDefined) {
-      const isCandidateCwdAllowed = isPathAllowed(candidateCwd!, normalizedAllowedPathsFromConfig);
+    if (restrictCwd && globalAllowedPaths.length > 0) {
+      const isCandidateCwdAllowed = isPathAllowed(candidateCwd!, globalAllowedPaths);
       if (!isCandidateCwdAllowed) {
         this.serverActiveCwd = undefined;
         startupMessages.push(`INFO: Server's effective starting directory: ${candidateCwd}`);
         startupMessages.push("INFO: 'restrictWorkingDirectory' is enabled, and this directory is not in the configured 'allowedPaths'.");
         startupMessages.push("INFO: The server's active working directory is currently NOT SET.");
         startupMessages.push("INFO: To run commands that don't specify a 'workingDir', you must first set a valid working directory using the 'set_current_directory' tool.");
-        startupMessages.push(`INFO: Configured allowed paths are: ${normalizedAllowedPathsFromConfig.join(', ')}`);
+        startupMessages.push(`INFO: Configured allowed paths are: ${globalAllowedPaths.join(', ')}`);
       } else {
         this.serverActiveCwd = candidateCwd;
         startupMessages.push(`INFO: Server's active working directory initialized to: ${this.serverActiveCwd}.`);
@@ -132,62 +156,188 @@ class CLIServer {
     }
 
     startupMessages.forEach(msg => console.error(msg));
-
-    this.setupHandlers();
   }
 
-  private validateSingleCommand(shellConfig: ShellConfig, command: string): void { // Takes ShellConfig directly
-    if (this.config.security.enableInjectionProtection) {
-      // const shellConfig = this.config.shells[shell]; // No longer needed
-      validateShellOperators(command, shellConfig); // Use passed shellConfig
+  private getShellConfig(shellName: string): ResolvedShellConfig | null {
+    return this.resolvedConfigs.get(shellName) || null;
+  }
+
+  private getEnabledShells(): string[] {
+    return Array.from(this.resolvedConfigs.keys());
+  }
+
+  private validateSingleCommand(context: ValidationContext, command: string): void {
+    if (context.shellConfig.security.enableInjectionProtection) {
+      validateShellOperators(command, context);
     }
 
     const { command: executable, args } = parseCommand(command);
 
-    if (isCommandBlocked(executable, Array.from(this.blockedCommands))) {
+    if (isCommandBlocked(executable, context)) {
       throw new McpError(
         ErrorCode.InvalidRequest,
-        `Command is blocked: "${extractCommandName(executable)}"`
+        `Command is blocked for ${context.shellName}: "${extractCommandName(executable)}"`
       );
     }
 
-    if (isArgumentBlocked(args, this.config.security.blockedArguments)) {
+    if (isArgumentBlocked(args, context)) {
       throw new McpError(
         ErrorCode.InvalidRequest,
-        'One or more arguments are blocked. Check configuration for blocked patterns.'
+        `One or more arguments are blocked for ${context.shellName}. Check configuration for blocked patterns.`
       );
     }
 
-    if (command.length > this.config.security.maxCommandLength) {
+    if (command.length > context.shellConfig.security.maxCommandLength) {
       throw new McpError(
         ErrorCode.InvalidRequest,
-        `Command exceeds maximum length of ${this.config.security.maxCommandLength}`
+        `Command exceeds maximum length of ${context.shellConfig.security.maxCommandLength} for ${context.shellName}`
       );
     }
   }
 
-  private validateCommand(shellConfig: ShellConfig, command: string, workingDir: string): void { // Takes ShellConfig
+  private validateCommand(context: ValidationContext, command: string, workingDir: string): void {
     const steps = command.split(/\s*&&\s*/);
-    let currentDir = workingDir;
+    let currentDir = normalizePathForShell(workingDir, context);
 
     for (const step of steps) {
       const trimmed = step.trim();
       if (!trimmed) continue;
 
-      this.validateSingleCommand(shellConfig, trimmed); // Pass shellConfig
+      this.validateSingleCommand(context, trimmed);
 
       const { command: executable, args } = parseCommand(trimmed);
       if ((executable.toLowerCase() === 'cd' || executable.toLowerCase() === 'chdir') && args.length) {
-        let target = normalizeWindowsPath(args[0]);
-        if (!path.isAbsolute(target)) {
-          target = normalizeWindowsPath(path.resolve(currentDir, target));
+        // Normalize the target path for the shell type
+        let target = normalizePathForShell(args[0], context);
+
+        // If relative, resolve against current directory
+        if (!path.isAbsolute(target) && !target.startsWith('/')) {
+          if (context.isWindowsShell) {
+            target = path.win32.resolve(currentDir, target);
+          } else {
+            target = path.posix.resolve(currentDir, target);
+          }
         }
-        if (this.config.security.restrictWorkingDirectory) {
-          validateWorkingDirectory(target, Array.from(this.allowedPaths));
-        }
+
+        // Validate the new directory
+        validateWorkingDirectoryWithContext(target, context);
         currentDir = target;
       }
     }
+  }
+
+  private async executeShellCommand(
+    shellName: string,
+    shellConfig: ResolvedShellConfig,
+    command: string,
+    workingDir: string
+  ): Promise<CallToolResult> {
+    return new Promise((resolve, reject) => {
+      let shellProcess: ReturnType<typeof spawn>;
+      let spawnArgs: string[];
+
+      if (shellName === 'wsl') {
+        const parsedCommand = parseCommand(command);
+        spawnArgs = [...shellConfig.executable.args, parsedCommand.command, ...parsedCommand.args];
+      } else {
+        spawnArgs = [...shellConfig.executable.args, command];
+      }
+
+      try {
+        // For WSL, convert WSL paths back to Windows paths for spawn cwd
+        let spawnCwd = workingDir;
+        let envVars = { ...process.env };
+        if (shellName === 'wsl') {
+          if (workingDir.startsWith('/mnt/')) {
+            // Convert /mnt/c/path to C:\path
+            const match = workingDir.match(/^\/mnt\/([a-z])\/(.*)$/i);
+            if (match) {
+              const drive = match[1].toUpperCase();
+              const pathPart = match[2].replace(/\//g, '\\');
+              spawnCwd = `${drive}:\\${pathPart}`;
+            }
+          } else if (workingDir.startsWith('/')) {
+            // Pure Linux paths like /tmp - use current directory for spawn
+            // and let emulator handle the path emulation
+            spawnCwd = process.cwd();
+          }
+          // Pass original WSL path to emulator via environment variable
+          envVars.WSL_ORIGINAL_PATH = workingDir;
+        }
+        
+        shellProcess = spawn(
+          shellConfig.executable.command,
+          spawnArgs,
+          {
+            cwd: spawnCwd,
+            stdio: ['pipe', 'pipe', 'pipe'],
+            env: envVars
+          }
+        );
+      } catch (err) {
+        throw new McpError(
+          ErrorCode.InternalError,
+          `Failed to start ${shellName} process: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+
+      let output = '';
+      let error = '';
+
+      shellProcess.stdout?.on('data', (data) => {
+        output += data.toString();
+      });
+
+      shellProcess.stderr?.on('data', (data) => {
+        error += data.toString();
+      });
+
+      shellProcess.on('close', (code) => {
+        clearTimeout(timeout);
+
+        let resultMessage = '';
+        if (code === 0) {
+          resultMessage = output || 'Command completed successfully (no output)';
+        } else {
+          resultMessage = `Command failed with exit code ${code}\n`;
+          if (error) {
+            resultMessage += `Error output:\n${error}\n`;
+          }
+          if (output) {
+            resultMessage += `Standard output:\n${output}`;
+          }
+        }
+
+        resolve({
+          content: [{
+            type: 'text',
+            text: resultMessage
+          }],
+          isError: code !== 0,
+          metadata: {
+            exitCode: code ?? -1,
+            shell: shellName,
+            workingDirectory: workingDir
+          }
+        });
+      });
+
+      shellProcess.on('error', (err) => {
+        clearTimeout(timeout);
+        reject(new McpError(
+          ErrorCode.InternalError,
+          `${shellName} process error: ${err.message}`
+        ));
+      });
+
+      const timeout = setTimeout(() => {
+        shellProcess.kill();
+        reject(new McpError(
+          ErrorCode.InternalError,
+          `Command execution timed out after ${shellConfig.security.commandTimeout} seconds in ${shellName}`
+        ));
+      }, shellConfig.security.commandTimeout * 1000);
+    });
   }
 
   /**
@@ -203,11 +353,37 @@ class CLIServer {
     this.server.setRequestHandler(ListResourcesRequestSchema, async () => {
       const resources: Array<{uri:string,name:string,description:string,mimeType:string}> = [];
       
-      // Add a resource for CLI configuration
+      // Add resources for configuration
       resources.push({
         uri: "cli://config",
         name: "CLI Server Configuration",
-        description: "Main CLI server configuration (excluding sensitive data)",
+        description: "Complete server configuration with global and shell-specific settings",
+        mimeType: "application/json"
+      });
+
+      resources.push({
+        uri: "cli://config/global",
+        name: "Global Configuration",
+        description: "Global default settings applied to all shells",
+        mimeType: "application/json"
+      });
+      
+      // Add shell-specific configuration resources for each enabled shell
+      const enabledShells = this.getEnabledShells();
+      for (const shellName of enabledShells) {
+        resources.push({
+          uri: `cli://config/shells/${shellName}`,
+          name: `${shellName} Shell Configuration`,
+          description: `Resolved configuration for ${shellName} shell`,
+          mimeType: "application/json"
+        });
+      }
+      
+      // Add security information resource
+      resources.push({
+        uri: "cli://info/security",
+        name: "Security Information",
+        description: "Current security settings and restrictions",
         mimeType: "application/json"
       });
 
@@ -232,71 +408,144 @@ class CLIServer {
         };
       }
       
+      // Handle global configuration
+      if (uri === "cli://config/global") {
+        const globalConfig = createSerializableConfig({
+          global: this.config.global,
+          shells: {} // Add empty shells object to satisfy ServerConfig type
+        });
+        
+        return {
+          contents: [{
+            uri,
+            mimeType: "application/json",
+            text: JSON.stringify(globalConfig.global, null, 2)
+          }]
+        };
+      }
+      
+      // Handle shell-specific configuration
+      const shellMatch = uri.match(/^cli:\/\/config\/shells\/([a-zA-Z0-9_-]+)$/);
+      if (shellMatch) {
+        const shellName = shellMatch[1];
+        const resolved = this.getShellConfig(shellName);
+        
+        if (!resolved) {
+          throw new McpError(
+            ErrorCode.InvalidRequest,
+            `Shell '${shellName}' not found or not enabled`
+          );
+        }
+        
+        const shellInfo = createResolvedConfigSummary(shellName, resolved);
+        
+        return {
+          contents: [{
+            uri,
+            mimeType: "application/json",
+            text: JSON.stringify(shellInfo, null, 2)
+          }]
+        };
+      }
+      
+      // Handle security information
+      if (uri === "cli://info/security") {
+        const securityInfo: any = {
+          globalSettings: {
+            restrictWorkingDirectory: this.config.global.security.restrictWorkingDirectory,
+            enableInjectionProtection: this.config.global.security.enableInjectionProtection,
+            maxCommandLength: this.config.global.security.maxCommandLength,
+            defaultCommandTimeout: this.config.global.security.commandTimeout
+          },
+          globalAllowedPaths: this.config.global.paths.allowedPaths,
+          enabledShells: this.getEnabledShells(),
+          shellSpecificSettings: {}
+        };
+        
+        // Add shell-specific security settings
+        for (const [shellName, config] of this.resolvedConfigs.entries()) {
+          securityInfo.shellSpecificSettings[shellName] = {
+            timeout: config.security.commandTimeout,
+            maxCommandLength: config.security.maxCommandLength,
+            restrictedPaths: config.paths.allowedPaths,
+            blockedCommands: config.restrictions.blockedCommands,
+            blockedOperators: config.restrictions.blockedOperators
+          };
+        }
+        
+        return {
+          contents: [{
+            uri,
+            mimeType: "application/json",
+            text: JSON.stringify(securityInfo, null, 2)
+          }]
+        };
+      }
+      
       throw new McpError(
         ErrorCode.InvalidRequest,
         `Unknown resource URI: ${uri}`
       );
     });
 
-    // List available tools: log execute_command description then return tools
+    // List available tools with dynamic descriptions and schemas
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
-      const allowedShells = (Object.keys(this.config.shells) as Array<keyof typeof this.config.shells>)
-        .filter(shell => {
-          const shellConf = this.config.shells[shell];
-          return shellConf && shellConf.enabled; // Check shellConf exists
-        });
-      const descriptionLines = [
-        ...buildToolDescription(allowedShells)
-      ];
-      const description = descriptionLines.join("\n");
-      console.error(`[tool: execute_command] Description:\n${description}`);
-      const tools = [
-        {
+      // Get enabled shells and their resolved configurations
+      const enabledShells = this.getEnabledShells();
+      const tools = [];
+
+      // Add execute_command tool with dynamic description and schema
+      if (enabledShells.length > 0) {
+        const executeCommandDescription = buildExecuteCommandDescription(this.resolvedConfigs);
+        const executeCommandSchema = buildExecuteCommandSchema(enabledShells, this.resolvedConfigs);
+        
+        console.error(`[tool: execute_command] Description:\n${executeCommandDescription}`);
+        
+        tools.push({
           name: "execute_command",
-          description,
-          inputSchema: {
-            type: "object",
-            properties: {
-              shell: { type: "string", enum: allowedShells, description: "Shell to use for command execution" },
-              command: { type: "string", description: "Command to execute" },
-              workingDir: { type: "string", description: "Working directory (optional)" }
-            },
-            required: ["shell", "command"]
-          }
-        },
-        {
-          name: "get_current_directory",
-          description: "Get the current working directory",
-          inputSchema: { type: "object", properties: {} }
-        },
-        {
-          name: "set_current_directory",
-          description: "Set the current working directory",
-          inputSchema: { 
-            type: "object", 
-            properties: { 
-              path: { type: "string", description: "Path to set as current working directory" } 
-            },
-            required: ["path"]
-          }
-        },
-        {
-          name: "get_config",
-          description: "Get the windows CLI server configuration",
-          inputSchema: { type: "object", properties: {} }
-        },
-        {
-          name: "validate_directories",
-          description: "Check if directories are within allowed paths (only available when restrictWorkingDirectory is enabled)",
-          inputSchema: {
-            type: "object",
-            properties: {
-              directories: { type: "array", items: { type: "string" }, description: "List of directories to validate" }
-            },
-            required: ["directories"]
-          }
+          description: executeCommandDescription,
+          inputSchema: executeCommandSchema
+        });
+      }
+
+      // Add directory management tools
+      tools.push({
+        name: "get_current_directory",
+        description: "Get the current working directory",
+        inputSchema: { type: "object", properties: {} }
+      });
+      
+      tools.push({
+        name: "set_current_directory",
+        description: "Set the current working directory",
+        inputSchema: { 
+          type: "object", 
+          properties: { 
+            path: { type: "string", description: "Path to set as current working directory" } 
+          },
+          required: ["path"]
         }
-      ];
+      });
+      
+      // Add get_config with enhanced description
+      tools.push({
+        name: "get_config",
+        description: buildGetConfigDescription(),
+        inputSchema: { type: "object", properties: {} }
+      });
+      
+      // Add validate_directories only when path restrictions are enabled
+      if (this.config.global.security.restrictWorkingDirectory) {
+        const validateDescription = buildValidateDirectoriesDescription(enabledShells.length > 0);
+        const validateSchema = buildValidateDirectoriesSchema(enabledShells);
+        
+        tools.push({
+          name: "validate_directories",
+          description: validateDescription,
+          inputSchema: validateSchema
+        });
+      }
+      
       return { tools };
     });
 
@@ -312,23 +561,42 @@ class CLIServer {
     try {
       switch (toolParams.name) {
         case "execute_command": {
-          // parse args with allowed shells
+          const enabledShells = this.getEnabledShells();
+          if (enabledShells.length === 0) {
+            throw new McpError(
+              ErrorCode.InvalidRequest,
+              'No shells are enabled in the configuration'
+            );
+          }
+
           const args = z.object({
-            shell: z.enum(Object.keys(this.config.shells).filter(shell =>
-              this.config.shells[shell as keyof typeof this.config.shells]!.enabled
-            ) as [string, ...string[]]),
+            shell: z.enum(enabledShells as [string, ...string[]]),
             command: z.string(),
             workingDir: z.string().optional()
           }).parse(toolParams.arguments);
 
-          // Determine working directory
+          const shellConfig = this.getShellConfig(args.shell);
+          if (!shellConfig) {
+            throw new McpError(
+              ErrorCode.InvalidRequest,
+              `Shell '${args.shell}' is not configured or enabled`
+            );
+          }
+
+          const context = createValidationContext(args.shell, shellConfig);
+
           let workingDir: string;
           if (args.workingDir) {
-            // Preserve WSL paths; normalize others
-            if (args.shell === 'wsl') {
-              workingDir = args.workingDir;
-            } else {
-              workingDir = normalizeWindowsPath(args.workingDir);
+            workingDir = normalizePathForShell(args.workingDir, context);
+            if (shellConfig.security.restrictWorkingDirectory) {
+              try {
+                validateWorkingDirectoryWithContext(workingDir, context);
+              } catch (error: any) {
+                throw new McpError(
+                  ErrorCode.InvalidRequest,
+                  `Working directory validation failed: ${error.message}`
+                );
+              }
             }
           } else {
             if (!this.serverActiveCwd) {
@@ -339,187 +607,29 @@ class CLIServer {
                 }],
                 isError: true,
                 metadata: {}
-              } as CallToolResult;
+              };
             }
             workingDir = this.serverActiveCwd;
-          }
 
-          const shellKey = args.shell as keyof typeof this.config.shells;
-          const shellConfig = this.config.shells[shellKey];
-          if (!shellConfig) {
-            throw new McpError(
-              ErrorCode.InvalidRequest,
-              `Shell '${shellKey}' is not configured or enabled`
-            );
-          }
-
-          if (this.config.security.restrictWorkingDirectory) {
-            try {
-              if (shellKey === 'wsl') {
-                validateWslWorkingDirectory(workingDir, Array.from(this.allowedPaths));
-              } else {
-                validateWorkingDirectory(workingDir, Array.from(this.allowedPaths));
+            if (shellConfig.security.restrictWorkingDirectory) {
+              try {
+                validateWorkingDirectoryWithContext(workingDir, context);
+              } catch (error: any) {
+                return {
+                  content: [{
+                    type: "text",
+                    text: `Error: Current directory '${workingDir}' is not allowed for shell '${args.shell}'. ${error.message}`
+                  }],
+                  isError: true,
+                  metadata: {}
+                };
               }
-            } catch (error: any) {
-              let originalWorkingDir = args.workingDir ? args.workingDir : process.cwd();
-              const detailMessage = error && typeof error.message === 'string' ? error.message : String(error);
-              throw new McpError(
-                ErrorCode.InvalidRequest,
-                `Working directory (${originalWorkingDir}) outside allowed paths. Original error: ${detailMessage}. Use validate_directories tool to validate directories before execution.`
-              );
             }
           }
 
-          // Validate command (including chained operations)
-          this.validateCommand(shellConfig, args.command, workingDir); // Pass shellConfig (already resolved)
+          this.validateCommand(context, args.command, workingDir);
 
-          // Determine CWD for spawn: For WSL emulator, use a valid Linux path.
-          // workingDir here is already normalizeWindowsPath(args.workingDir)
-          let effectiveSpawnCwd = workingDir;
-          if (shellKey === 'wsl') {
-            // The wsl.sh emulator runs on Linux. Its CWD must be a valid Linux path.
-            // args.workingDir (e.g. /mnt/c/tad/sub) is the conceptual WSL CWD.
-            // For the emulator, we just run it in a known valid Linux CWD.
-            // The actual CWD validation against allowedPaths has already passed using normalized paths.
-          // This previous validation was for Windows paths.
-          // For WSL, we need to validate the conceptual WSL working directory.
-
-          let pathForWslValidation: string;
-          if (args.workingDir) {
-            // If user provided workingDir for WSL, assume it's a WSL-style path.
-            // Normalize it for consistency.
-            pathForWslValidation = path.posix.normalize(args.workingDir);
-            // Consistent trailing slash removal (unless root)
-            if (pathForWslValidation !== '/' && pathForWslValidation.endsWith('/')) {
-              pathForWslValidation = pathForWslValidation.slice(0, -1);
-            }
-          } else {
-            // If no workingDir provided for WSL command, validate WSL equivalent of host's CWD.
-            try {
-              pathForWslValidation = convertWindowsToWslPath(workingDir, shellConfig.wslMountPoint || '/mnt/');
-            } catch (error: any) {
-              throw new McpError(
-                ErrorCode.InvalidRequest,
-                `Failed to convert host current working directory (${process.cwd()}) to WSL path for validation: ${error.message}`
-              );
-            }
-          }
-
-          if (this.config.security.restrictWorkingDirectory) {
-            try {
-              // Validate this conceptual WSL working directory.
-              validateWslWorkingDirectory(pathForWslValidation, Array.from(this.allowedPaths));
-            } catch (error: any) {
-              throw new McpError(
-                ErrorCode.InvalidRequest,
-                `WSL working directory validation failed: ${error.message}. Use validate_directories tool to check allowed paths.`
-              );
-            }
-          }
-
-          // For the wsl.sh SCRIPT itself, it runs in the project root on the host.
-          // The wsl.sh script is responsible for setting the correct CWD *inside* WSL if needed.
-            effectiveSpawnCwd = process.cwd(); // e.g., /app
-          }
-
-          // Execute command
-          return new Promise((resolve, reject) => {
-            let shellProcess: ReturnType<typeof spawn>;
-            let spawnArgs: string[];
-
-            if (shellKey === 'wsl') {
-              const parsedWslCommand = parseCommand(args.command);
-              spawnArgs = [...shellConfig.args, parsedWslCommand.command, ...parsedWslCommand.args];
-            } else {
-              spawnArgs = [...shellConfig.args, args.command];
-            }
-
-            try {
-              shellProcess = spawn(
-                shellConfig.command,
-                spawnArgs, // Use the conditionally prepared spawnArgs
-                { cwd: effectiveSpawnCwd, stdio: ['pipe', 'pipe', 'pipe'] }
-              );
-            } catch (err) {
-              throw new McpError(
-                ErrorCode.InternalError,
-                `Failed to start shell process: ${err instanceof Error ? err.message : String(err)}. Consult the server admin for configuration changes (config.json - shells).`
-              );
-            }
-
-            if (!shellProcess.stdout || !shellProcess.stderr) {
-              throw new McpError(
-                ErrorCode.InternalError,
-                'Failed to initialize shell process streams'
-              );
-            }
-
-            let output = '';
-            let error = '';
-
-            shellProcess.stdout.on('data', (data) => {
-              output += data.toString();
-            });
-
-            shellProcess.stderr.on('data', (data) => {
-              error += data.toString();
-            });
-
-            shellProcess.on('close', (code) => {
-              // Prepare detailed result message
-              let resultMessage = '';
-
-              if (code === 0) {
-                resultMessage = output || 'Command completed successfully (no output)';
-              } else {
-                resultMessage = `Command failed with exit code ${code}\n`;
-                if (error) {
-                  resultMessage += `Error output:\n${error}\n`;
-                }
-                if (output) {
-                  resultMessage += `Standard output:\n${output}`;
-                }
-                if (!error && !output) {
-                  resultMessage += 'No error message or output was provided';
-                }
-              }
-
-              resolve({
-                content: [{
-                  type: "text",
-                  text: resultMessage
-                }],
-                isError: code !== 0,
-                metadata: {
-                  exitCode: code ?? -1,
-                  shell: args.shell,
-                  workingDirectory: workingDir
-                }
-              });
-            });
-
-            // Handle process errors (e.g., shell crashes)
-            shellProcess.on('error', (err) => {
-              clearTimeout(timeout); // Clear the timeout
-              const errorMessage = `Shell process error: ${err.message}`;
-              reject(new McpError(
-                ErrorCode.InternalError,
-                errorMessage
-              ));
-            });
-
-            // Set configurable timeout to prevent hanging
-            const timeout = setTimeout(() => {
-              shellProcess.kill();
-              const timeoutMessage = `Command execution timed out after ${this.config.security.commandTimeout} seconds. Consult the server admin for configuration changes (config.json - commandTimeout).`;
-              reject(new McpError(
-                ErrorCode.InternalError,
-                timeoutMessage
-              ));
-            }, this.config.security.commandTimeout * 1000);
-
-            shellProcess.on('close', () => clearTimeout(timeout));
-          });
+          return this.executeShellCommand(args.shell, shellConfig, args.command, workingDir);
         }
 
         case "get_current_directory": {
@@ -545,33 +655,36 @@ class CLIServer {
         }
 
         case "set_current_directory": {
-          // Parse args
           const args = z.object({
             path: z.string()
           }).parse(toolParams.arguments);
 
-          // Normalize the path
+          // Normalize the path (Windows style for server's internal use)
           const newDir = normalizeWindowsPath(args.path);
 
-          // Validate the path
+          // Validate against global allowed paths
           try {
-            if (this.config.security.restrictWorkingDirectory) {
-              validateWorkingDirectory(newDir, Array.from(this.allowedPaths));
+            if (this.config.global.security.restrictWorkingDirectory) {
+              if (!isPathAllowed(newDir, this.config.global.paths.allowedPaths)) {
+                throw new Error(
+                  `Directory must be within allowed paths: ${this.config.global.paths.allowedPaths.join(', ')}`
+                );
+              }
             }
 
             // Change directory and update server state
             process.chdir(newDir);
             this.serverActiveCwd = newDir;
-            const currentDir = this.serverActiveCwd;
+            
             return {
               content: [{
                 type: "text",
-                text: `Current directory changed to: ${currentDir}`
+                text: `Current directory changed to: ${newDir}`
               }],
               isError: false,
               metadata: {
                 previousDirectory: args.path,
-                newDirectory: currentDir
+                newDirectory: newDir
               }
             };
           } catch (error) {
@@ -589,73 +702,132 @@ class CLIServer {
       }
 
       case "validate_directories": {
-          if (!this.config.security.restrictWorkingDirectory) {
-            return {
-              content: [{
-                type: "text",
-                text: "Directory validation is disabled because 'restrictWorkingDirectory' is not enabled in the server configuration."
-              }],
-              isError: true,
-              metadata: {}
-            };
-          }
-          try {
-            const parsedValDirArgs = ValidateDirectoriesArgsSchema.parse(toolParams.arguments);
-            const allowedPathsArray = this.config.security.allowedPaths ?? [];
-            validateDirectoriesAndThrow(parsedValDirArgs.directories, allowedPathsArray);
-            return {
-              content: [{
-                type: "text",
-                text: JSON.stringify({ message: "All specified directories are valid and within allowed paths." })
-              }],
-              isError: false,
-              metadata: {}
-            };
-          } catch (error: any) {
-            if (error instanceof z.ZodError) {
+        if (!this.config.global.security.restrictWorkingDirectory) {
+          return {
+            content: [{
+              type: "text",
+              text: "Directory validation is disabled because 'restrictWorkingDirectory' is not enabled in the server configuration."
+            }],
+            isError: true,
+            metadata: {}
+          };
+        }
+
+        try {
+          // Build schema dynamically based on enabled shells
+          const enabledShells = this.getEnabledShells();
+          const schema = z.object({
+            directories: z.array(z.string()).min(1),
+            shell: enabledShells.length > 0 
+              ? z.enum([...enabledShells] as [string, ...string[]]).optional()
+              : z.string().optional()
+          });
+          
+          const args = schema.parse(toolParams.arguments);
+          const { directories } = args;
+          const shellName = args.shell;
+
+          if (shellName) {
+            const shellConfig = this.getShellConfig(shellName);
+            if (!shellConfig) {
               return {
                 content: [{
                   type: "text",
-                  text: `Invalid arguments for validate_directories: ${error.errors.map(e => `${e.path.join('.')} - ${e.message}`).join(', ')}`
-                }],
-                isError: true,
-                metadata: {}
-              };
-            } else if (error instanceof McpError) {
-              return {
-                content: [{
-                  type: "text",
-                  text: error.message
-                }],
-                isError: true,
-                metadata: {}
-              };
-            } else {
-              return {
-                content: [{
-                  type: "text",
-                  text: `An unexpected error occurred during directory validation: ${error.message || String(error)}`
+                  text: `Shell '${shellName}' is not configured or enabled`
                 }],
                 isError: true,
                 metadata: {}
               };
             }
+
+            const context = createValidationContext(shellName, shellConfig);
+            const invalidDirs: string[] = [];
+
+            for (const dir of directories) {
+              try {
+                validateWorkingDirectoryWithContext(dir, context);
+              } catch (error) {
+                invalidDirs.push(dir);
+              }
+            }
+
+            if (invalidDirs.length > 0) {
+              return {
+                content: [{
+                  type: "text",
+                  text: `The following directories are invalid for ${shellName}: ${invalidDirs.join(', ')}. Allowed paths: ${shellConfig.paths.allowedPaths.join(', ')}`
+                }],
+                isError: true,
+                metadata: { invalidDirectories: invalidDirs, shell: shellName }
+              };
+            }
+          } else {
+            validateDirectoriesAndThrow(directories, this.config.global.paths.allowedPaths);
+          }
+
+          return {
+            content: [{
+              type: "text",
+              text: "All specified directories are valid and within allowed paths."
+            }],
+            isError: false,
+            metadata: {}
+          };
+        } catch (error: any) {
+          if (error instanceof z.ZodError) {
+            return {
+              content: [{
+                type: "text",
+                text: `Invalid arguments for validate_directories: ${error.errors.map(e => `${e.path.join('.')} - ${e.message}`).join(', ')}`
+              }],
+              isError: true,
+              metadata: {}
+            };
+          } else if (error instanceof McpError) {
+            return {
+              content: [{
+                type: "text",
+                text: error.message
+              }],
+              isError: true,
+              metadata: {}
+            };
+          } else {
+            return {
+              content: [{
+                type: "text",
+                text: `An unexpected error occurred during directory validation: ${error.message || String(error)}`
+              }],
+              isError: true,
+              metadata: {}
+            };
+          }
         }
       }
 
 
       case "get_config": {
-        // Create a structured copy of config for external use
-        const safeConfig = this.getSafeConfig();
-          return {
-            content: [{
-              type: "text",
-              text: JSON.stringify(safeConfig, null, 2)
-            }],
-            isError: false,
-            metadata: {}
-          };
+        const safeConfig = createSerializableConfig(this.config);
+
+        const resolvedConfigs: any = {};
+        for (const [shellName, resolved] of this.resolvedConfigs.entries()) {
+          resolvedConfigs[shellName] = createResolvedConfigSummary(shellName, resolved);
         }
+
+        const fullConfig = {
+          configuration: safeConfig,
+          resolvedShells: resolvedConfigs
+        };
+
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(fullConfig, null, 2)
+          }],
+          isError: false,
+          metadata: {}
+        };
+      }
 
         default:
           throw new McpError(

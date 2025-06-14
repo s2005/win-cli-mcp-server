@@ -1,5 +1,8 @@
 import { describe, it, expect } from '@jest/globals'; // Added expect here
 import { convertWindowsToWslPath } from '../../src/utils/validation';
+import { validateWorkingDirectory } from '../../src/utils/pathValidation';
+import { createValidationContext } from '../../src/utils/validationContext';
+import type { ResolvedShellConfig } from '../../src/types/config';
 
 describe('convertWindowsToWslPath', () => {
   it('should convert standard Windows paths', () => {
@@ -66,5 +69,32 @@ describe('convertWindowsToWslPath', () => {
   it('should ensure mount point always has a trailing slash internally', () => {
     expect(convertWindowsToWslPath('C:\\Data', '/custom')).toBe('/custom/c/Data'); // No trailing slash in arg
     expect(convertWindowsToWslPath('C:\\Data', '/custom/')).toBe('/custom/c/Data'); // With trailing slash in arg
+  });
+});
+
+describe('validateWslPath with Windows drives', () => {
+  const baseConfig: ResolvedShellConfig = {
+    enabled: true,
+    executable: { command: 'wsl.exe', args: [] },
+    security: {
+      maxCommandLength: 1000,
+      commandTimeout: 30,
+      enableInjectionProtection: true,
+      restrictWorkingDirectory: true
+    },
+    restrictions: { blockedCommands: [], blockedArguments: [], blockedOperators: [] },
+    paths: { allowedPaths: ['/mnt/c/allowed'], initialDir: undefined },
+    wslConfig: { mountPoint: '/mnt/', inheritGlobalPaths: true }
+  };
+
+  const context = createValidationContext('wsl', baseConfig);
+
+  it('accepts Windows drive paths when convertible', () => {
+    expect(() => validateWorkingDirectory('C:\allowed', context)).not.toThrow();
+    expect(() => validateWorkingDirectory('C:////allowed', context)).not.toThrow();
+  });
+
+  it('rejects Windows drive paths outside allowed paths', () => {
+    expect(() => validateWorkingDirectory('D:\\not', context)).toThrow(/allowed paths/);
   });
 });

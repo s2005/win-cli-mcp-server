@@ -31,10 +31,23 @@ let baseConfig: any;
 beforeAll(() => {
   tempDir = testPaths.tempDir;
   baseConfig = buildTestConfig({
-    security: {
-      allowedPaths: [tempDir],
-      blockedCommands: ['rm'],
-      blockedArguments: ['--exec']
+    global: {
+      paths: {
+        allowedPaths: [tempDir]
+      },
+      restrictions: {
+        blockedCommands: ['rm'],
+        blockedArguments: ['--exec']
+      }
+    },
+    shells: {
+      cmd: {
+        enabled: true,
+        executable: {
+          command: 'cmd.exe',
+          args: ['/c']
+        }
+      }
     }
   });
 });
@@ -45,16 +58,45 @@ afterAll(() => {
 
 describe('validateCommand with different settings', () => {
   test('blocks dangerous operators when injection protection enabled', () => {
-    const config = { ...baseConfig, security: { ...baseConfig.security, enableInjectionProtection: true } };
+    const config = buildTestConfig({
+      global: {
+        security: { enableInjectionProtection: true },
+        paths: { allowedPaths: [tempDir] },
+        restrictions: { blockedCommands: ['rm'], blockedArguments: ['--exec'] }
+      },
+      shells: {
+        cmd: {
+          enabled: true,
+          executable: {
+            command: 'cmd.exe',
+            args: ['/c']
+          }
+        }
+      }
+    });
     const server = new MockCLIServer(config);
     expect(() => {
-      const cmdConfig = (server as any).config.shells.cmd;
-      (server as any).validateCommand(cmdConfig, `cd ${tempDir} && echo hi & echo there`, tempDir);
-    }).toThrow("MCP error -32600: Command contains blocked operator: &");
+      (server as any).validateCommand('cmd', `cd ${tempDir} && echo hi & echo there`, tempDir);
+    }).toThrow("MCP error -32600: Command contains blocked operator for cmd: &");
   });
 
   test('allows command chaining when injection protection disabled', () => {
-    const config = { ...baseConfig, security: { ...baseConfig.security, enableInjectionProtection: false } };
+    const config = buildTestConfig({
+      global: {
+        security: { enableInjectionProtection: false },
+        paths: { allowedPaths: [tempDir] },
+        restrictions: { blockedCommands: ['rm'], blockedArguments: ['--exec'] }
+      },
+      shells: {
+        cmd: {
+          enabled: true,
+          executable: {
+            command: 'cmd.exe',
+            args: ['/c']
+          }
+        }
+      }
+    });
     const server = new MockCLIServer(config);
     expect(() => {
       (server as any).validateCommand('cmd', `cd ${tempDir} && echo hi`, tempDir);
@@ -62,7 +104,22 @@ describe('validateCommand with different settings', () => {
   });
 
   test('allows changing directory outside allowed paths when restriction disabled', () => {
-    const config = { ...baseConfig, security: { ...baseConfig.security, restrictWorkingDirectory: false } };
+    const config = buildTestConfig({
+      global: {
+        security: { restrictWorkingDirectory: false },
+        paths: { allowedPaths: [tempDir] },
+        restrictions: { blockedCommands: ['rm'], blockedArguments: ['--exec'] }
+      },
+      shells: {
+        cmd: {
+          enabled: true,
+          executable: {
+            command: 'cmd.exe',
+            args: ['/c']
+          }
+        }
+      }
+    });
     const server = new MockCLIServer(config);
     expect(() => {
       (server as any).validateCommand('cmd', 'cd C:\\Windows && echo hi', tempDir);
@@ -70,7 +127,22 @@ describe('validateCommand with different settings', () => {
   });
 
   test('rejects changing directory outside allowed paths when restriction enabled', () => {
-    const config = { ...baseConfig, security: { ...baseConfig.security, restrictWorkingDirectory: true } };
+    const config = buildTestConfig({
+      global: {
+        security: { restrictWorkingDirectory: true },
+        paths: { allowedPaths: [tempDir] },
+        restrictions: { blockedCommands: ['rm'], blockedArguments: ['--exec'] }
+      },
+      shells: {
+        cmd: {
+          enabled: true,
+          executable: {
+            command: 'cmd.exe',
+            args: ['/c']
+          }
+        }
+      }
+    });
     const server = new MockCLIServer(config);
     expect(() => {
       (server as any).validateCommand('cmd', 'cd C:\\Windows && echo hi', tempDir);

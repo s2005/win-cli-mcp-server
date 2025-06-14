@@ -20,11 +20,10 @@ It allows MCP clients (like [Claude Desktop](https://claude.ai/download)) to per
 - [Features](#features)
 - [Usage with Claude Desktop](#usage-with-claude-desktop)
 - [Configuration](#configuration)
+  - [Configuration Structure](#configuration-structure)
   - [Configuration Locations](#configuration-locations)
   - [Default Configuration](#default-configuration)
   - [Configuration Settings](#configuration-settings)
-    - [Security Settings](#security-settings)
-    - [Shell Configuration](#shell-configuration)
 - [API](#api)
   - [Tools](#tools)
   - [Resources](#resources)
@@ -35,9 +34,11 @@ It allows MCP clients (like [Claude Desktop](https://claude.ai/download)) to per
 
 ## Features
 
-- **Multi-Shell Support**: Execute commands in PowerShell, Command Prompt (CMD), and Git Bash
-- **Windows Subsystem for Linux (WSL)** support for command execution.
-- **Resource Exposure**: View current directory and configuration as MCP resources
+- **Multi-Shell Support**: Execute commands in PowerShell, Command Prompt (CMD), Git Bash, and WSL
+- **Inheritance-Based Configuration**: Global defaults with shell-specific overrides
+- **Shell-Specific Validation**: Each shell can have its own security settings and path formats
+- **Flexible Path Management**: Different shells support different path formats (Windows/Unix/Mixed)
+- **Resource Exposure**: View configuration and security settings as MCP resources
 - **Explicit Working Directory State**: The server maintains an active working directory used when `execute_command` omits `workingDir`. If the launch directory isn't allowed, this state starts unset and must be set via `set_current_directory`.
 - **Optional Initial Directory**: Configure `initialDir` to start the server in a specific directory.
 - **Security Controls**:
@@ -45,11 +46,11 @@ It allows MCP clients (like [Claude Desktop](https://claude.ai/download)) to per
   - Working directory validation
   - Maximum command length limits
   - Smart argument validation
+  - Shell-specific timeout settings
 - **Configurable**:
-  - Custom security rules
-  - Shell-specific settings
-  - Path restrictions
-  - Blocked command lists
+  - Inheritance-based configuration system
+  - Shell-specific security overrides
+  - Dynamic tool descriptions based on enabled shells
 
 See the [API](#api) section for more details on the tools and resources the server provides to MCP clients.
 
@@ -88,36 +89,118 @@ For use with a specific config file, add the `--config` flag:
 }
 ```
 
+### Configuration Setup
+
+To get started with configuration:
+
+1. **Use a sample configuration**:
+   - Copy `config.sample.json` for basic setup
+   - Copy `config.development.json` for development environments
+   - Copy `config.secure.json` for high-security environments
+
+2. **Create your own configuration**:
+
+   ```bash
+   # Copy and customize a sample
+   cp config.sample.json my-config.json
+   
+   # Or generate a default config
+   npx @simonb97/server-win-cli --init-config ./my-config.json
+   ```
+
+3. **Update your Claude Desktop configuration** to use your config file:
+
+   ```json
+   {
+     "mcpServers": {
+       "windows-cli": {
+         "command": "npx",
+         "args": [
+           "-y",
+           "@simonb97/server-win-cli",
+           "--config",
+           "./my-config.json"
+         ]
+       }
+     }
+   }
+   ```
+
 After configuring, you can:
 
 - Execute commands directly using the available tools
-- View server configuration in the Resources section
+- View server configuration and security settings in the Resources section
+- Access shell-specific configurations and capabilities
 
 ## Configuration
 
-The server uses a JSON configuration file to customize its behavior. You can specify settings for security controls and shell configurations.
+The server uses an inheritance-based configuration system where global defaults can be overridden by shell-specific settings.
 
-1. To create a default config file, either:
+### Configuration Structure
 
-    **a)** copy `config.sample.json` to `config.json` (or the location specified by `--config`), or
-
-    **b)** run:
-
-    ```bash
-    npx @simonb97/server-win-cli --init-config ./config.json
-    ```
-
-2. Then set the `--config` flag to point to your config file as described in the [Usage with Claude Desktop](#usage-with-claude-desktop) section.
+```json
+{
+  "global": {
+    "security": {
+      "maxCommandLength": 2000,
+      "commandTimeout": 30,
+      "enableInjectionProtection": true,
+      "restrictWorkingDirectory": true
+    },
+    "restrictions": {
+      "blockedCommands": ["format", "shutdown"],
+      "blockedArguments": ["--exec", "-e"],
+      "blockedOperators": ["&", "|", ";", "`"]
+    },
+    "paths": {
+      "allowedPaths": ["/home/user", "/tmp"],
+      "initialDir": "/home/user"
+    }
+  },
+  "shells": {
+    "powershell": {
+      "enabled": true,
+      "executable": {
+        "command": "powershell.exe",
+        "args": ["-NoProfile", "-NonInteractive", "-Command"]
+      },
+      "overrides": {
+        "security": {
+          "commandTimeout": 45
+        },
+        "restrictions": {
+          "blockedCommands": ["Remove-Item", "Format-Volume"]
+        }
+      }
+    },
+    "wsl": {
+      "enabled": true,
+      "executable": {
+        "command": "wsl.exe",
+        "args": ["-e"]
+      },
+      "wslConfig": {
+        "mountPoint": "/mnt/",
+        "inheritGlobalPaths": true,
+        "pathMapping": {
+          "enabled": true,
+          "windowsToWsl": true
+        }
+      }
+    }
+  }
+}
+```
 
 ### Configuration Locations
 
-The server looks for configuration in the following locations (in order):
+The server looks for configuration files in the following order:
 
-1. Path specified by `--config` flag
-2. ./config.json in current directory
-3. ~/.win-cli-mcp/config.json in user's home directory
+1. Path specified via `--config` command line argument
+2. `win-cli-mcp.config.json` in the current working directory
+3. `~/.win-cli-mcp/config.json` in user's home directory
 
-If no configuration file is found, the server will use a default (restricted) configuration:
+If no configuration file is found, the server will use a default (restricted) configuration.
 
 ### Default Configuration
 
@@ -125,58 +208,51 @@ If no configuration file is found, the server will use a default (restricted) co
 
 ```json
 {
-  "security": {
-    "maxCommandLength": 2000,
-    "blockedCommands": [
-      "rm",
-      "del",
-      "rmdir",
-      "format",
-      "shutdown",
-      "restart",
-      "reg",
-      "regedit",
-      "net",
-      "netsh",
-      "takeown",
-      "icacls"
-    ],
-    "blockedArguments": [
-      "--exec",
-      "-e",
-      "/c",
-      "-enc",
-      "-encodedcommand",
-      "-command",
-      "--interactive",
-      "-i",
-      "--login",
-      "--system"
-    ],
-    "initialDir": null,
-    "allowedPaths": ["User's home directory", "Current working directory"],
-    "restrictWorkingDirectory": true,
-    "commandTimeout": 30,
-    "enableInjectionProtection": true
+  "global": {
+    "security": {
+      "maxCommandLength": 2000,
+      "commandTimeout": 30,
+      "enableInjectionProtection": true,
+      "restrictWorkingDirectory": true
+    },
+    "restrictions": {
+      "blockedCommands": [
+        "rm", "del", "rmdir", "format", "shutdown", "restart",
+        "reg", "regedit", "net", "netsh", "takeown", "icacls"
+      ],
+      "blockedArguments": [
+        "--exec", "-e", "/c", "-enc", "-encodedcommand",
+        "-command", "--interactive", "-i", "--login", "--system"
+      ],
+      "blockedOperators": ["&", "|", ";", "`"]
+    },
+    "paths": {
+      "allowedPaths": ["~", "."],
+      "initialDir": null,
+      "restrictWorkingDirectory": true
+    }
   },
   "shells": {
     "powershell": {
       "enabled": true,
-      "command": "powershell.exe",
-      "args": ["-NoProfile", "-NonInteractive", "-Command"],
-      "blockedOperators": ["&", "|", ";", "`"]
+      "executable": {
+        "command": "powershell.exe",
+        "args": ["-NoProfile", "-NonInteractive", "-Command"]
+      }
     },
     "cmd": {
       "enabled": true,
-      "command": "cmd.exe",
-      "args": ["/c"],
-      "blockedOperators": ["&", "|", ";", "`"]
+      "executable": {
+        "command": "cmd.exe",
+        "args": ["/c"]
+      }
     },
     "gitbash": {
       "enabled": true,
-      "command": "C:\\Program Files\\Git\\bin\\bash.exe",
-      "args": ["-c"],
-      "blockedOperators": ["&", "|", ";", "`"]
+      "executable": {
+        "command": "C:\\Program Files\\Git\\bin\\bash.exe",
+        "args": ["-c"]
+      }
     }
   }
 }
@@ -184,142 +260,177 @@ If no configuration file is found, the server will use a default (restricted) co
 
 ### Configuration Settings
 
-The configuration file is divided into two main sections: `security` and `shells`.
+The configuration file uses an inheritance system with two main sections: `global` and `shells`.
 
-#### Security Settings
+#### Global Settings
+
+Global settings provide defaults that apply to all shells unless overridden.
+
+##### Security Settings
 
 ```json
 {
-  "security": {
-    // Maximum allowed length for any command
-    "maxCommandLength": 1000,
+  "global": {
+    "security": {
+      // Maximum allowed length for any command
+      "maxCommandLength": 2000,
+      
+      // Command execution timeout in seconds
+      "commandTimeout": 30,
+      
+      // Enable protection against command injection
+      "enableInjectionProtection": true,
+      
+      // Restrict commands to allowed working directories
+      "restrictWorkingDirectory": true
+    }
+  }
+}
+```
 
-    // Commands to block - blocks both direct use and full paths
-    // Example: "rm" blocks both "rm" and "C:\Windows\System32\rm.exe"
-    // Case-insensitive: "del" blocks "DEL.EXE", "del.cmd", etc.
-    "blockedCommands": [
-      "rm", // Delete files
-      "del", // Delete files
-      "rmdir", // Delete directories
-      "format", // Format disks
-      "shutdown", // Shutdown system
-      "restart", // Restart system
-      "reg", // Registry editor
-      "regedit", // Registry editor
-      "net", // Network commands
-      "netsh", // Network commands
-      "takeown", // Take ownership of files
-      "icacls" // Change file permissions
-    ],
+##### Restriction Settings
 
-    // Arguments that will be blocked when used with any command
-    // Note: Checks each argument independently - "cd warm_dir" won't be blocked just because "rm" is in blockedCommands
-    "blockedArguments": [
-      "--exec", // Execution flags
-      "-e", // Short execution flags
-      "/c", // Command execution in some shells
-      "-enc", // PowerShell encoded commands
-      "-encodedcommand", // PowerShell encoded commands
-      "-command", // Direct PowerShell command execution
-      "--interactive", // Interactive mode which might bypass restrictions
-      "-i", // Short form of interactive
-      "--login", // Login shells might have different permissions
-      "--system" // System level operations
-    ],
+```json
+{
+  "global": {
+    "restrictions": {
+      // Commands to block - blocks both direct use and full paths
+      "blockedCommands": ["rm", "format", "shutdown"],
+      
+      // Arguments to block across all commands
+      "blockedArguments": ["--exec", "-e", "/c"],
+      
+      // Operators to block in commands
+      "blockedOperators": ["&", "|", ";", "`"]
+    }
+  }
+}
+```
 
-    // Optional starting directory for the server
-    "initialDir": null,
+##### Path Settings
 
-    // List of directories where commands can be executed
-    "allowedPaths": ["C:\\Users\\YourUsername", "C:\\Projects"],
-
-    // If true, commands can only run in allowedPaths
-    "restrictWorkingDirectory": true,
-
-    // Timeout for command execution in seconds (default: 30)
-    "commandTimeout": 30,
-
-    // Enable or disable protection against command injection (covers ;, &, |, `)
-    "enableInjectionProtection": true
+```json
+{
+  "global": {
+    "paths": {
+      // Directories where commands can be executed
+      "allowedPaths": ["/home/user", "/tmp", "C:\\Users\\username"],
+      
+      // Initial working directory (null = use launch directory)
+      "initialDir": "/home/user",
+      
+      // Whether to restrict working directories
+      "restrictWorkingDirectory": true
+    }
   }
 }
 ```
 
 #### Shell Configuration
 
-**Important Note:** Shells must be explicitly configured to be included. Only shells specified in your `config.json` will be available.
+Each shell can be individually configured and can override global settings.
 
-Example minimal configuration enabling only Git Bash:
-```json
-{
-  "shells": {
-    "gitbash": {
-      "enabled": true,
-      "command": "C:\\Program Files\\Git\\usr\\bin\\bash.exe",
-      "args": ["-c"]
-    }
-  }
-}
-```
+##### Basic Shell Configuration
 
 ```json
 {
   "shells": {
     "powershell": {
-      // Enable/disable this shell
       "enabled": true,
-      // Path to shell executable
-      "command": "powershell.exe",
-      // Default arguments for the shell
-      "args": ["-NoProfile", "-NonInteractive", "-Command"],
-      // Optional: Specify which command operators to block
-      "blockedOperators": ["&", "|", ";", "`"]  // Block all command chaining
-    },
-    "cmd": {
-      "enabled": true,
-      "command": "cmd.exe",
-      "args": ["/c"],
-      "blockedOperators": ["&", "|", ";", "`"]  // Block all command chaining
-    },
-    "gitbash": {
-      "enabled": true,
-      "command": "C:\\Program Files\\Git\\bin\\bash.exe",
-      "args": ["-c"],
-      "blockedOperators": ["&", "|", ";", "`"]  // Block all command chaining
+      "executable": {
+        "command": "powershell.exe",
+        "args": ["-NoProfile", "-NonInteractive", "-Command"]
+      }
     }
   }
 }
 ```
 
-### WSL Configuration
+##### Shell-Specific Overrides
 
-WSL support is optional. To enable WSL, add it to your shell configuration:
+```json
+{
+  "shells": {
+    "powershell": {
+      "enabled": true,
+      "executable": {
+        "command": "powershell.exe",
+        "args": ["-NoProfile", "-NonInteractive", "-Command"]
+      },
+      "overrides": {
+        "security": {
+          "commandTimeout": 45,
+          "maxCommandLength": 3000
+        },
+        "restrictions": {
+          "blockedCommands": ["Remove-Item", "Format-Volume"],
+          "blockedOperators": ["|", "&"]
+        }
+      }
+    }
+  }
+}
+```
+
+##### WSL Configuration
+
+WSL shells have additional configuration options for path mapping:
 
 ```json
 {
   "shells": {
     "wsl": {
       "enabled": true,
-      "command": "wsl.exe",
-      "args": ["-e"]
+      "executable": {
+        "command": "wsl.exe",
+        "args": ["-e"]
+      },
+      "wslConfig": {
+        "mountPoint": "/mnt/",
+        "inheritGlobalPaths": true,
+        "pathMapping": {
+          "enabled": true,
+          "windowsToWsl": true
+        }
+      }
     }
   }
 }
 ```
 
-#### Chained Commands
+### Configuration Inheritance
 
-You can execute a series of commands in one request by joining them with `&&`. The server validates each step and checks any `cd` operations against the allowed directories.
+The inheritance system works as follows:
+
+1. **Global defaults** are applied to all shells
+2. **Shell-specific overrides** replace or extend global settings
+3. **Array settings** (like `blockedCommands`) are merged, not replaced
+4. **Object settings** are deep-merged
+5. **Primitive settings** are replaced
+
+Example of inheritance in action:
 
 ```json
 {
-  "name": "execute_command",
-  "arguments": {
-    "shell": "gitbash",
-    "command": "cd /c/my/project && source venv/bin/activate && npm test"
+  "global": {
+    "security": { "commandTimeout": 30 },
+    "restrictions": { "blockedCommands": ["rm", "format"] }
+  },
+  "shells": {
+    "powershell": {
+      "overrides": {
+        "security": { "commandTimeout": 45 },
+        "restrictions": { "blockedCommands": ["Remove-Item"] }
+      }
+    }
   }
 }
 ```
+
+Results in PowerShell having:
+
+- `commandTimeout`: 45 (overridden)
+- `blockedCommands`: ["rm", "format", "Remove-Item"] (merged)
 
 ## API
 
@@ -447,7 +558,7 @@ This project includes a [Dev Container](https://code.visualstudio.com/docs/remot
 4. VS Code will build the dev container image (as defined in `.devcontainer/devcontainer.json` and `Dockerfile`) and start the container. This might take a few minutes the first time.
 5. Once the container is built and started, your VS Code will be connected to this environment. The `postCreateCommand` (`npm install`) will ensure all dependencies are installed.
 
-### Running Tests
+### Running Tests in the Dev Container
 
 After opening the project in the dev container:
 

@@ -3,6 +3,11 @@ import { CLIServer } from '../src/index.js';
 import { DEFAULT_CONFIG } from '../src/utils/config.js';
 import type { ServerConfig } from '../src/types/config.js';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Handle ESM module environment where __dirname is not available
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 const wslEmulatorPath = path.resolve(process.cwd(), 'scripts/wsl-emulator.js');
@@ -12,20 +17,68 @@ describe('Async Command Execution', () => {
   let config: ServerConfig;
 
   beforeEach(() => {
-    config = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+    const config = JSON.parse(JSON.stringify(DEFAULT_CONFIG)) as ServerConfig;
+    
+    // Make sure the global config is properly initialized
+    if (!config.global) {
+      config.global = {
+        security: {
+          maxCommandLength: 1000,
+          commandTimeout: 30000,
+          enableInjectionProtection: true,
+          restrictWorkingDirectory: false
+        },
+        restrictions: {
+          blockedCommands: [],
+          blockedArguments: [],
+          blockedOperators: []
+        },
+        paths: { 
+          allowedPaths: [] 
+        }
+      };
+    } else {
+      // Set security properties
+      config.global.security = {
+        ...config.global.security,
+        restrictWorkingDirectory: false
+      };
+      
+      // Filter out -e from blockedArguments for WSL tests
+      if (config.global.restrictions?.blockedArguments) {
+        config.global.restrictions.blockedArguments = 
+          config.global.restrictions.blockedArguments.filter(arg => arg !== '-e');
+      }
+    }
+    
+    // Configure shells
+    if (!config.shells) {
+      config.shells = {};
+    }
+    
+    // Disable other shells
+    if (config.shells.powershell) config.shells.powershell.enabled = false;
+    if (config.shells.gitbash) config.shells.gitbash.enabled = false;
+    
+    // Configure WSL shell to use the emulator for cross platform tests
     config.shells.wsl = {
       enabled: true,
-      command: 'node', // Use node to execute the JS emulator
-      args: [wslEmulatorPath, '-e'], // Pass emulator path
-      validatePath: (dir: string) => /^(\/mnt\/[a-zA-Z]\/|\/)/.test(dir),
-      blockedOperators: ['&', '|', ';', '`']
+      executable: {
+        command: 'node',
+        args: [wslEmulatorPath, '-e']
+      },
+      overrides: {
+        restrictions: { blockedOperators: ['&', '|', ';', '`'] }
+      },
+      wslConfig: {
+        mountPoint: '/mnt/',
+        inheritGlobalPaths: true
+      }
     };
-    config.shells.powershell.enabled = false;
-    config.shells.cmd.enabled = false;
-    config.shells.gitbash.enabled = false;
-    config.security.restrictWorkingDirectory = false;
-    // Allow -e argument for wsl emulator
-    config.security.blockedArguments = config.security.blockedArguments.filter(arg => arg !== '-e');
+
+    // Disable other shells
+    if (config.shells.cmd) config.shells.cmd.enabled = false;
+    
     server = new CLIServer(config);
   });
 
@@ -63,7 +116,7 @@ describe('Async Command Execution', () => {
       try {
         return await server._executeTool({
           name: 'execute_command',
-          arguments: { shell: 'wsl', command: cmd }
+          arguments: { shell: 'wsl', command: cmd.startsWith('fail') ? 'exit 1' : cmd }
         }) as CallToolResult;
       } finally {
         active--;

@@ -31,13 +31,27 @@ let config: any;
 beforeAll(() => {
   tempDir = testPaths.tempDir;
   config = buildTestConfig({
-    security: {
-      ...DEFAULT_CONFIG.security, // Start with all defaults
-      allowedPaths: [normalizeWindowsPath(tempDir)], // Ensure normalized path
-      blockedCommands: ['rm'],
-      blockedArguments: ['--exec'], // Note: DEFAULT_CONFIG already blocks --exec
-      enableInjectionProtection: false, // Override default
-      restrictWorkingDirectory: true, // Ensure this is true for the tests
+    global: {
+      security: {
+        enableInjectionProtection: false, // Override default
+        restrictWorkingDirectory: true  // Ensure this is true for the tests
+      },
+      paths: {
+        allowedPaths: [normalizeWindowsPath(tempDir)] // Ensure normalized path
+      },
+      restrictions: {
+        blockedCommands: ['rm'],
+        blockedArguments: ['--exec'] // Note: DEFAULT_CONFIG already blocks --exec
+      }
+    },
+    shells: {
+      cmd: {
+        enabled: true,
+        executable: {
+          command: 'cmd.exe',
+          args: ['/c']
+        }
+      }
     }
   });
 });

@@ -32,7 +32,22 @@ describe('Process Management', () => {
     proc.kill = jest.fn();
     spawnMock.mockReturnValue(proc);
 
-    const server = new CLIServer(buildTestConfig({ security: { commandTimeout: 1 } }));
+    const server = new CLIServer(buildTestConfig({
+      global: {
+        security: { commandTimeout: 1, maxCommandLength: 8192, enableInjectionProtection: true, restrictWorkingDirectory: false },
+        paths: { allowedPaths: [] },
+        restrictions: { blockedCommands: [], blockedArguments: [], blockedOperators: [] }
+      },
+      shells: {
+        cmd: {
+          enabled: true,
+          executable: {
+            command: 'cmd.exe',
+            args: ['/c']
+          }
+        }
+      }
+    }));
     const execPromise = server._executeTool({
       name: 'execute_command',
       arguments: { shell: 'cmd', command: 'echo hi' }
@@ -47,11 +62,26 @@ describe('Process Management', () => {
   test('should handle process spawn errors gracefully', async () => {
     spawnMock.mockImplementation(() => { throw new Error('spawn fail'); });
 
-    const server = new CLIServer(buildTestConfig());
+    const server = new CLIServer(buildTestConfig({
+      global: {
+        security: { commandTimeout: 60, maxCommandLength: 8192, enableInjectionProtection: true, restrictWorkingDirectory: false },
+        paths: { allowedPaths: [] },
+        restrictions: { blockedCommands: [], blockedArguments: [], blockedOperators: [] }
+      },
+      shells: {
+        cmd: {
+          enabled: true,
+          executable: {
+            command: 'cmd.exe',
+            args: ['/c']
+          }
+        }
+      }
+    }));
     await expect(server._executeTool({
       name: 'execute_command',
       arguments: { shell: 'cmd', command: 'echo hi' }
-    })).rejects.toThrow('Failed to start shell process: spawn fail');
+    })).rejects.toThrow('Failed to start cmd process: spawn fail');
   });
 
   test('should propagate shell process errors', async () => {
@@ -61,14 +91,29 @@ describe('Process Management', () => {
     proc.kill = jest.fn();
     spawnMock.mockReturnValue(proc);
 
-    const server = new CLIServer(buildTestConfig());
+    const server = new CLIServer(buildTestConfig({
+      global: {
+        security: { commandTimeout: 60, maxCommandLength: 8192, enableInjectionProtection: true, restrictWorkingDirectory: false },
+        paths: { allowedPaths: [] },
+        restrictions: { blockedCommands: [], blockedArguments: [], blockedOperators: [] }
+      },
+      shells: {
+        cmd: {
+          enabled: true,
+          executable: {
+            command: 'cmd.exe',
+            args: ['/c']
+          }
+        }
+      }
+    }));
     const execPromise = server._executeTool({
       name: 'execute_command',
       arguments: { shell: 'cmd', command: 'echo hi' }
     });
 
     proc.emit('error', new Error('boom'));
-    await expect(execPromise).rejects.toThrow('Shell process error: boom');
+    await expect(execPromise).rejects.toThrow('cmd process error: boom');
   });
 
   test('should clear timeout when process exits normally', async () => {
@@ -79,7 +124,22 @@ describe('Process Management', () => {
     proc.kill = jest.fn();
     spawnMock.mockReturnValue(proc);
 
-    const server = new CLIServer(buildTestConfig({ security: { commandTimeout: 2 } }));
+    const server = new CLIServer(buildTestConfig({
+      global: {
+        security: { commandTimeout: 2, maxCommandLength: 8192, enableInjectionProtection: true, restrictWorkingDirectory: false },
+        paths: { allowedPaths: [] },
+        restrictions: { blockedCommands: [], blockedArguments: [], blockedOperators: [] }
+      },
+      shells: {
+        cmd: {
+          enabled: true,
+          executable: {
+            command: 'cmd.exe',
+            args: ['/c']
+          }
+        }
+      }
+    }));
     const execPromise = server._executeTool({
       name: 'execute_command',
       arguments: { shell: 'cmd', command: 'echo hi' }
